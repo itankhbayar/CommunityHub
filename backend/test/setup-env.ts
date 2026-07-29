@@ -9,4 +9,15 @@ process.env.DATABASE_URL = resolveTestDatabaseUrl();
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret';
 process.env.JWT_ACCESS_TTL ??= '15m';
 process.env.REFRESH_TOKEN_TTL_DAYS ??= '7';
-process.env.COOKIE_SECURE ??= 'false';
+
+// Forced, not defaulted (`??=`), for the same reason DATABASE_URL above is:
+// a real value in .env would otherwise win and break the suite. supertest
+// speaks plain HTTP, so a Secure cookie is set but never sent back and every
+// authenticated request 401s — which reads as ~100 authorization failures
+// rather than as one misconfigured environment variable.
+//
+// Once .env holds production values (COOKIE_SECURE=true, COOKIE_SAMESITE=none
+// for a cross-site deploy), that is exactly what happens. SameSite=None also
+// implies Secure, so it has to be pinned here too.
+process.env.COOKIE_SECURE = 'false';
+process.env.COOKIE_SAMESITE = 'lax';
