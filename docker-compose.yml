@@ -26,6 +26,9 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4000
+      # inotify events do not cross Windows/macOS bind mounts; poll instead so
+      # the in-container dev server actually sees host file edits
+      CHOKIDAR_USEPOLLING: 'true'
       DATABASE_URL: postgresql://${POSTGRES_USER:-communityhub}:${POSTGRES_PASSWORD:-communityhub}@db:5432/${POSTGRES_DB:-communityhub}?schema=public
       CORS_ORIGIN: http://localhost:${WEB_PORT:-3000}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
@@ -49,6 +52,8 @@ services:
       NODE_ENV: development
       # browser-side calls, so this is the host-visible API URL, not the compose hostname
       NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4000}
+      # same polling reason as the api service
+      WATCHPACK_POLLING: 'true'
     ports:
       - '${WEB_PORT:-3000}:3000'
     volumes:

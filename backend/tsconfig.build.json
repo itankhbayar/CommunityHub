@@ -1,4 +1,12 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // prisma.config.ts excluded: it sits at the package root, and including it
+  // would push tsc's rootDir up a level, nesting build output as dist/src/*
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "prisma.config.ts"
+  ]
 }
