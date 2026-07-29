@@ -1,5 +1,10 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import { ActorRole } from '../permissions';
 
 /**
  * Target-aware membership invariants — the rules the permission matrix cannot
@@ -45,6 +50,39 @@ export class MembershipPolicyService {
     if (owners <= 1) {
       throw new ConflictException(
         'A community must keep at least one owner. Transfer ownership first.',
+      );
+    }
+  }
+
+  /**
+   * Rule 2: a MODERATOR may not remove (or otherwise act on) an OWNER.
+   * The demotion half of rule 2 is already unreachable — the matrix denies
+   * moderators 'member:role:change' entirely — so this covers removal.
+   */
+  assertModeratorCannotTouchOwner(
+    actorRole: ActorRole,
+    targetRole: string,
+  ): void {
+    if (actorRole === 'MODERATOR' && targetRole === 'OWNER') {
+      throw new ForbiddenException('Moderators cannot remove an owner.');
+    }
+  }
+
+  /**
+   * Rule 3: nobody changes their own role — not owners, not platform admins.
+   * Self-removal is likewise refused here; leaving is its own endpoint with
+   * its own semantics, and one code path for "membership ends" is enough.
+   */
+  assertNotSelf(
+    actorUserId: string,
+    targetUserId: string,
+    action: 'change the role of' | 'remove',
+  ): void {
+    if (actorUserId === targetUserId) {
+      throw new ForbiddenException(
+        action === 'remove'
+          ? 'You cannot remove yourself — leave the community instead.'
+          : 'You cannot change your own role.',
       );
     }
   }
