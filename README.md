@@ -180,9 +180,20 @@ each of which fails in its own confusing way:
   its own `pg` pool. Session mode preserves both; transaction mode adds
   connection-pinning and prepared-statement caveats to the most
   correctness-critical path in the codebase.
-- **Append `?sslmode=require`** — Supabase refuses cleartext, and
-  `pg-connection-string` parses a *missing* `sslmode` as no TLS rather than
-  defaulting it on, so omitting it fails at connect time.
+- **Append `?sslmode=no-verify`** — some `sslmode` is mandatory, since
+  Supabase refuses cleartext while `pg-connection-string` parses a *missing*
+  `sslmode` as no TLS rather than defaulting it on. `require` does not work:
+  `pg` 8.x treats it as an alias for `verify-full`, and Supabase's pooler
+  presents a chain signed by its own "Supabase Root 2021 CA", which Node does
+  not ship and so rejects with `SELF_SIGNED_CERT_IN_CHAIN`.
+
+  **The tradeoff:** `no-verify` still encrypts the connection, but does not
+  authenticate the server, so it does not protect against an active
+  machine-in-the-middle between the API and the database. The stricter fix is
+  to download Supabase's root CA and connect with
+  `?sslmode=verify-full&sslrootcert=<path>`, committing that (public,
+  non-secret) certificate to the repo. Not done here — noted rather than
+  hidden.
 
 **2. Set `CORS_ORIGIN` on the API** to the Vercel origin — scheme included,
 no trailing slash, e.g. `https://your-app.vercel.app`. It is the one value
