@@ -180,20 +180,24 @@ each of which fails in its own confusing way:
   its own `pg` pool. Session mode preserves both; transaction mode adds
   connection-pinning and prepared-statement caveats to the most
   correctness-critical path in the codebase.
-- **Append `?sslmode=no-verify`** — some `sslmode` is mandatory, since
-  Supabase refuses cleartext while `pg-connection-string` parses a *missing*
-  `sslmode` as no TLS rather than defaulting it on. `require` does not work:
-  `pg` 8.x treats it as an alias for `verify-full`, and Supabase's pooler
-  presents a chain signed by its own "Supabase Root 2021 CA", which Node does
-  not ship and so rejects with `SELF_SIGNED_CERT_IN_CHAIN`.
+- **Append `?sslmode=verify-full&sslrootcert=./certs/supabase-ca.crt`** — some
+  `sslmode` is mandatory, since Supabase refuses cleartext while
+  `pg-connection-string` parses a *missing* `sslmode` as no TLS rather than
+  defaulting it on. Bare `require` does not work either: `pg` 8.x aliases it
+  to `verify-full`, and Supabase's pooler presents a chain signed by its own
+  "Supabase Root 2021 CA", which Node does not ship — so it fails with
+  `SELF_SIGNED_CERT_IN_CHAIN` unless that CA is supplied explicitly.
 
-  **The tradeoff:** `no-verify` still encrypts the connection, but does not
-  authenticate the server, so it does not protect against an active
-  machine-in-the-middle between the API and the database. The stricter fix is
-  to download Supabase's root CA and connect with
-  `?sslmode=verify-full&sslrootcert=<path>`, committing that (public,
-  non-secret) certificate to the repo. Not done here — noted rather than
-  hidden.
+  `backend/certs/supabase-ca.crt` is that root, committed deliberately: a CA
+  certificate is public, and pinning it is what makes the connection
+  *authenticated* rather than merely encrypted. `no-verify` would also
+  connect, but accepts any certificate and so gives no protection against an
+  active machine-in-the-middle between the API and the database.
+
+  The path is relative to the working directory, which is `backend/` on the
+  host and `/app` in the container — the same location either way. A missing
+  or wrong CA fails closed (the client throws at construction rather than
+  quietly downgrading), which is the intended behavior.
 
 **2. Set `CORS_ORIGIN` on the API** to the Vercel origin — scheme included,
 no trailing slash, e.g. `https://your-app.vercel.app`. It is the one value
