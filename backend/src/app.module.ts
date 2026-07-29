@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { AuthzModule } from './authz/authz.module';
+import { CommunitiesModule } from './communities/communities.module';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -13,6 +14,7 @@ import { PrismaModule } from './prisma/prisma.module';
     // AuthzModule's PermissionGuard — identity first, then permissions.
     AuthModule,
     AuthzModule,
+    CommunitiesModule,
   ],
   controllers: [HealthController],
   providers: [],
