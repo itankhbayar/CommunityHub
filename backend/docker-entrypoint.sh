@@ -8,6 +8,16 @@
 # should do. Compose already gates this on the db healthcheck.
 set -e
 
+# Production has no bind mount, so the client and dist/ baked by the Dockerfile
+# are intact — go straight to migrations and the compiled server.
+if [ "$NODE_ENV" = "production" ]; then
+  echo "[entrypoint] applying migrations..."
+  npx prisma migrate deploy
+
+  echo "[entrypoint] starting api (production)..."
+  exec npm run start:prod
+fi
+
 echo "[entrypoint] generating prisma client..."
 npx prisma generate
 

@@ -18,6 +18,12 @@ RUN npm ci
 
 COPY . .
 
+# Baked so a production container boots straight into `node dist/main` instead
+# of compiling on every start. Under compose the bind mount shadows both
+# outputs, which is why the entrypoint still regenerates in dev.
+# `prisma generate` needs no live database — the URL only matters to migrate.
+RUN npx prisma generate && npm run build
+
 EXPOSE 4000
 
 # invoked via sh so a missing exec bit on a Windows checkout can't break startup
