@@ -22,10 +22,18 @@ services:
       - key: PORT
         value: 4000
 
+      # Supabase session pooler (port 5432 + pooler.supabase.com host), not the
+      # direct connection — that one is IPv6-only without the paid add-on.
+      # Session mode, not transaction mode (6543): the RSVP path holds
+      # SELECT ... FOR UPDATE row locks inside a transaction and the app runs
+      # its own pg pool, both of which session mode leaves alone.
+      #
+      # MUST end with ?sslmode=require. Supabase refuses cleartext, and pg
+      # parses a missing sslmode as "no TLS" rather than defaulting it on.
+      #
+      # Unsynced: it embeds the database password.
       - key: DATABASE_URL
-        fromDatabase:
-          name: communityhub-db
-          property: connectionString
+        sync: false
 
       # Set to the Vercel origin, scheme included, no trailing slash:
       #   https://your-app.vercel.app
@@ -48,6 +56,6 @@ services:
       - key: COOKIE_SAMESITE
         value: none
 
-databases:
-  - name: communityhub-db
-    plan: free
+# No `databases:` block: Postgres is hosted on Supabase, supplied via
+# DATABASE_URL above. Render's free tier deletes a database after 30 days,
+# which is the wrong property for anything meant to stay reachable.

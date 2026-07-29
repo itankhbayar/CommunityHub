@@ -162,12 +162,27 @@ no backend to authenticate against, and register/login fail because the
 browser resolves `NEXT_PUBLIC_API_URL`'s default `http://localhost:4000`
 against the *visitor's own machine*.
 
-**1. Deploy the API + database.** `render.yaml` at the repo root declares
-both. In Render: **New → Blueprint → select this repo**. It provisions
-Postgres, wires `DATABASE_URL`, generates `JWT_ACCESS_SECRET`, and sets
-`COOKIE_SECURE`/`COOKIE_SAMESITE`. Migrations apply automatically at boot
-via `docker-entrypoint.sh`. Nothing is Render-specific: Railway, Fly, or any
-Docker host works with the same variables.
+**1. Deploy the API.** `render.yaml` at the repo root declares it. In Render:
+**New → Blueprint → select this repo**. It generates `JWT_ACCESS_SECRET` and
+sets `COOKIE_SECURE`/`COOKIE_SAMESITE`. Migrations apply automatically at
+boot via `docker-entrypoint.sh`. Nothing is Render-specific: Railway, Fly, or
+any Docker host works with the same variables.
+
+**1a. Provision Postgres separately** (Supabase here; Neon or Render's own
+work too) and set `DATABASE_URL` on the API service. Three requirements,
+each of which fails in its own confusing way:
+
+- **Session pooler, port 5432** — not the direct connection, which is
+  IPv6-only without Supabase's paid IPv4 add-on and simply won't route from
+  most hosts.
+- **Not transaction mode (6543)** — RSVP capacity safety depends on
+  `SELECT … FOR UPDATE` row locks held across a transaction, and the app runs
+  its own `pg` pool. Session mode preserves both; transaction mode adds
+  connection-pinning and prepared-statement caveats to the most
+  correctness-critical path in the codebase.
+- **Append `?sslmode=require`** — Supabase refuses cleartext, and
+  `pg-connection-string` parses a *missing* `sslmode` as no TLS rather than
+  defaulting it on, so omitting it fails at connect time.
 
 **2. Set `CORS_ORIGIN` on the API** to the Vercel origin — scheme included,
 no trailing slash, e.g. `https://your-app.vercel.app`. It is the one value
