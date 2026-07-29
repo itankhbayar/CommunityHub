@@ -123,6 +123,18 @@ outright. A double-submit CSRF token was considered and skipped as adding
 moving parts without closing a real gap for this deployment shape; a
 deployment on subdomains or with older-browser requirements should add one.
 
+**That reasoning inverts on a split-host deploy.** With the web app on one
+domain and the API on another, `SameSite` cannot stay Lax/Strict: a browser
+drops a Lax cookie arriving from a cross-site response entirely, so login
+returns 200 and the session never persists. Setting `COOKIE_SAMESITE=none`
+(see [Deploying](#deploying-split-host-vercel--hosted-api)) is the only
+option, and it genuinely forfeits the SameSite protection described above —
+leaving the JSON-only/unknown-field-rejecting API as the sole remaining CSRF
+barrier. That barrier is real but thinner than it was. **A split-host
+production deployment should add a double-submit CSRF token**; this repo does
+not, and that is the honest gap. Same-origin deploys keep the stronger
+defaults untouched.
+
 ## RSVP capacity under concurrency
 
 Counting GOING rows and then inserting cannot be fixed by locking the rows
@@ -142,10 +154,52 @@ sessions at a capacity-5 event and asserts exactly 5×200, 45×409, and 5
 GOING rows in the database; a second test hammers a capacity-3 event with
 waves of concurrent flips and asserts the count never exceeds 3.
 
+## Deploying: split host (Vercel + hosted API)
+
+Vercel builds the Next.js app only. It does not run `docker-compose.yml`, so
+the API and Postgres must be hosted separately — a frontend-only deploy has
+no backend to authenticate against, and register/login fail because the
+browser resolves `NEXT_PUBLIC_API_URL`'s default `http://localhost:4000`
+against the *visitor's own machine*.
+
+**1. Deploy the API + database.** `render.yaml` at the repo root declares
+both. In Render: **New → Blueprint → select this repo**. It provisions
+Postgres, wires `DATABASE_URL`, generates `JWT_ACCESS_SECRET`, and sets
+`COOKIE_SECURE`/`COOKIE_SAMESITE`. Migrations apply automatically at boot
+via `docker-entrypoint.sh`. Nothing is Render-specific: Railway, Fly, or any
+Docker host works with the same variables.
+
+**2. Set `CORS_ORIGIN` on the API** to the Vercel origin — scheme included,
+no trailing slash, e.g. `https://your-app.vercel.app`. It is the one value
+the blueprint leaves blank (`sync: false`). Comma-separate to allow preview
+deploys. A mismatch here surfaces as a CORS error in the browser console
+while the request itself succeeds server-side.
+
+**3. Set `NEXT_PUBLIC_API_URL` on Vercel** to the API's public URL, e.g.
+`https://communityhub-api.onrender.com`. This is inlined at **build time**,
+so after adding it you must **redeploy** — setting the variable alone
+changes nothing in an already-built bundle. This is the single most common
+cause of the symptom above.
+
+**4. Seed demo data** (optional) from the API host's shell:
+`npm run seed` — idempotent, safe to re-run.
+
+Verify with `curl https://<api-host>/health` → `{"status":"ok",…}`.
+
+Two deployment-specific notes. Both cookies switch to `SameSite=None` via
+`COOKIE_SAMESITE=none`, which is mandatory across domains and which costs
+real CSRF protection — see [Token storage](#token-storage-httponly-cookies).
+And Render's free tier idles the API after inactivity, so the first request
+after a pause takes ~30s; the frontend shows loading states rather than
+blank screens, but the wait is real.
+
 ## Deliberately skipped and why
 
-- **Email delivery, OAuth, payments, deployment** — out of scope per spec.
-  "Invite" is a direct add of an existing account by email.
+- **Email delivery, OAuth, payments** — out of scope per spec. "Invite" is a
+  direct add of an existing account by email.
+- **A managed deploy pipeline** — `render.yaml` provisions the API and its
+  database, but there is no CI, no staging environment, and no automated
+  migration gate; `docker compose up` remains the supported path.
 - **Community settings/delete UI** — the API endpoints exist and are fully
   tested; the UI was cut to spend the time on the required interactive
   components. (Creating a community from the UI works — the "New community"
