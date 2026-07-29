@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CommunityContext } from '../authz/community-context';
-import { Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { ListEventsQuery } from './dto/list-events.query';

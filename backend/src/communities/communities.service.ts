@@ -2,7 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CommunityContext } from '../authz/community-context';
 import { MembershipPolicyService } from '../authz/policies/membership.policy';
-import { Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client.js';
 import { CommunityRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommunityDto } from './dto/create-community.dto';

@@ -15,7 +15,7 @@
 import 'dotenv/config';
 import * as argon2 from 'argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from './generated/prisma/client';
+import { PrismaClient } from './generated/prisma/client.js';
 
 const DEMO_PASSWORD = 'password123!';
 

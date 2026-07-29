@@ -1,4 +1,4 @@
-import { Membership } from '../generated/prisma/client';
+import { Membership } from '../generated/prisma/client.js';
 import { CommunityRole, Visibility } from '../generated/prisma/enums';
 import { ActorRole } from './permissions';
 
