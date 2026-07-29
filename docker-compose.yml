@@ -35,6 +35,8 @@ services:
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # compose is same-origin (both on localhost), so the strict defaults hold
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
     ports:
       - '${API_PORT:-4000}:4000'
     volumes:
