@@ -4,9 +4,16 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { secondaryButtonClass, inputClass } from '@/components/ui/form';
+import { CommunityForm } from '@/components/community/CommunityForm';
+import { Modal } from '@/components/ui/Modal';
+import {
+  inputClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '@/components/ui/form';
 import { useDebouncedCallback } from '@/hooks/use-debounced-callback';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
 import { Community, Paginated } from '@/lib/types';
 
 const PAGE_SIZE = 12;
@@ -20,6 +27,8 @@ function CommunitiesIndex() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user } = useSession();
+  const [creating, setCreating] = useState(false);
 
   const urlQuery = searchParams.get('q') ?? '';
   const urlPage = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
@@ -65,23 +74,45 @@ function CommunitiesIndex() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Communities</h1>
-        <div className="w-full sm:w-72">
-          <label htmlFor="community-search" className="sr-only">
-            Search communities
-          </label>
-          <input
-            id="community-search"
-            type="search"
-            placeholder="Search communities…"
-            className={inputClass}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              syncToUrl(e.target.value.trim());
-            }}
-          />
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <div className="w-full sm:w-72">
+            <label htmlFor="community-search" className="sr-only">
+              Search communities
+            </label>
+            <input
+              id="community-search"
+              type="search"
+              placeholder="Search communities…"
+              className={inputClass}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                syncToUrl(e.target.value.trim());
+              }}
+            />
+          </div>
+          {user && (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className={`${primaryButtonClass} shrink-0`}
+            >
+              New community
+            </button>
+          )}
         </div>
       </div>
+
+      <Modal
+        open={creating}
+        onClose={() => setCreating(false)}
+        title="Create a community"
+      >
+        <CommunityForm
+          onDone={() => setCreating(false)}
+          onCancel={() => setCreating(false)}
+        />
+      </Modal>
 
       {isPending ? (
         <div

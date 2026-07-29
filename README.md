@@ -146,9 +146,10 @@ waves of concurrent flips and asserts the count never exceeds 3.
 
 - **Email delivery, OAuth, payments, deployment** — out of scope per spec.
   "Invite" is a direct add of an existing account by email.
-- **Community create/settings/delete UI** — the API endpoints exist and are
-  fully tested; the UI was cut to spend the time on the required
-  interactive components. Seeded communities cover the demo.
+- **Community settings/delete UI** — the API endpoints exist and are fully
+  tested; the UI was cut to spend the time on the required interactive
+  components. (Creating a community from the UI works — the "New community"
+  button on /communities.)
 - **Waitlist auto-promotion, rate limiting, realtime, audit log** (stretch
   goals) — none attempted; the core was prioritized. `WAITLIST` already
   exists in the RSVP enum so promotion needs no future migration.
