@@ -29,12 +29,17 @@ docker-compose.yml
 ## Commands
 
 ```bash
-docker compose up               # full stack (db + api + web)
-cd backend && npm run start:dev # API dev server
-cd backend && npm run test      # backend tests
+docker compose up                  # full stack (db + api + web)
+docker compose exec api npm run seed  # seed demo data (idempotent)
+cd backend && npm run start:dev    # API dev server (host)
+cd backend && npm run test         # unit tests (permission matrix)
+cd backend && npm run test:e2e     # 128 e2e tests vs real Postgres (db must be up)
 cd backend && npx prisma migrate dev
-cd backend && npm run seed      # seed script
-cd frontend && npm run dev      # frontend dev server
+cd backend && npm run seed         # seed from the host
+cd backend && npm run lint
+cd frontend && npm run dev         # frontend dev server (host)
+cd frontend && npm run build       # production build / type check
+cd frontend && npm run lint
 ```
 
 (Adjust here as scripts are added — keep this section accurate.)
