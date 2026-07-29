@@ -1,0 +1,186 @@
+// CommunityHub schema.
+//
+// Prisma 7: the generated client is emitted into src/ (so Nest's compiler picks
+// it up under its src rootDir), targets CommonJS to match NestJS, and the
+// connection URL lives in prisma.config.ts rather than here.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// PLATFORM_ADMIN is the only global role and is seeded manually.
+// Every other role is scoped to a single community via Membership.
+enum GlobalRole {
+  USER
+  PLATFORM_ADMIN
+}
+
+enum CommunityRole {
+  OWNER
+  MODERATOR
+  MEMBER
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum RsvpStatus {
+  GOING
+  WAITLIST
+  NOT_GOING
+}
+
+model User {
+  // uuid(7) is time-sortable, which keeps insert locality on the PK index
+  id           String     @id @default(uuid(7)) @db.Uuid
+  // stored lowercased; the register/login DTOs normalize before hitting the db
+  email        String     @unique
+  passwordHash String
+  displayName  String
+  globalRole   GlobalRole @default(USER)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships      Membership[]
+  posts            Post[]
+  likes            PostLike[]
+  rsvps            EventRsvp[]
+  sessions         RefreshToken[]
+  createdEvents    Event[]        @relation("EventCreator")
+  createdCommunities Community[]  @relation("CommunityCreator")
+}
+
+model Community {
+  id          String     @id @default(uuid(7)) @db.Uuid
+  slug        String     @unique
+  name        String
+  description String?
+  visibility  Visibility @default(PUBLIC)
+  createdById String     @db.Uuid
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  createdBy   User         @relation("CommunityCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  posts       Post[]
+  events      Event[]
+
+  @@index([visibility, createdAt(sort: Desc)])
+  @@index([name])
+}
+
+model Membership {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  userId      String        @db.Uuid
+  communityId String        @db.Uuid
+  role        CommunityRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  // one membership per (user, community) — the core constraint of the role system
+  @@unique([userId, communityId])
+  // serves both the member list and the "how many owners are left" check
+  @@index([communityId, role])
+}
+
+model Post {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  communityId String   @db.Uuid
+  authorId    String   @db.Uuid
+  body        String
+  // denormalized so the feed stays one query; only ever written in the same
+  // transaction as the matching PostLike insert/delete
+  likeCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  community Community  @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  likes     PostLike[]
+
+  // matches the feed's ORDER BY exactly, so keyset pagination is an index scan
+  @@index([communityId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId])
+}
+
+model PostLike {
+  postId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // composite PK is the uniqueness guarantee — one like per user per post
+  @@id([postId, userId])
+  @@index([userId])
+}
+
+model Event {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  communityId String    @db.Uuid
+  createdById String    @db.Uuid
+  title       String
+  description String?
+  location    String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  // NULL means unlimited; any non-null value is enforced under a row lock
+  capacity    Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  community Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdBy User        @relation("EventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  rsvps     EventRsvp[]
+
+  @@index([communityId, startsAt])
+}
+
+model EventRsvp {
+  id        String     @id @default(uuid(7)) @db.Uuid
+  eventId   String     @db.Uuid
+  userId    String     @db.Uuid
+  status    RsvpStatus
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // required by spec, and the backstop that makes double-booking impossible
+  // even if the capacity row lock were ever bypassed
+  @@unique([eventId, userId])
+  // supports counting GOING rows while holding the event row lock
+  @@index([eventId, status])
+}
+
+// Infrastructure, not domain: refresh tokens are stored server-side so logout
+// can actually invalidate them and rotation can detect reuse.
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  // sha256 of the opaque token; the raw value only ever exists in the cookie
+  tokenHash String    @unique
+  // rotation lineage: replaying an old token revokes the whole family
+  familyId  String    @db.Uuid
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}

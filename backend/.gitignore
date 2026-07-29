@@ -1,0 +1,15 @@
+node_modules
+
+# secrets — the documented contract lives in ../.env.example
+.env
+
+# Prisma Client is generated from schema.prisma, never edited by hand
+/src/generated/
+
+# `prisma init` vendors its agent skill docs here and links them in with
+# absolute symlinks, which would break on any other machine. Handy locally,
+# not something to commit.
+/.agents/
+/.claude/
+/.windsurf/
+skills-lock.json
