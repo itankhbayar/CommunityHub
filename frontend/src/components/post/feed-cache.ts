@@ -39,3 +39,24 @@ export function restoreFeed(
     queryClient.setQueryData(feedQueryKey(communityId), snapshot);
   }
 }
+
+export function removePostFromFeed(
+  queryClient: QueryClient,
+  communityId: string,
+  postId: string,
+): FeedCache | undefined {
+  const key = feedQueryKey(communityId);
+  const previous = queryClient.getQueryData<FeedCache>(key);
+
+  if (previous) {
+    queryClient.setQueryData<FeedCache>(key, {
+      ...previous,
+      pages: previous.pages.map((page) => ({
+        ...page,
+        items: page.items.filter((post) => post.id !== postId),
+      })),
+    });
+  }
+
+  return previous;
+}
