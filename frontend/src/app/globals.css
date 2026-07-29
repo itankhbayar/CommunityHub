@@ -8,3 +8,15 @@
 body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Respect users who ask for less motion: collapse animations and transitions
+   (skeleton pulses, toast slides) to effectively instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

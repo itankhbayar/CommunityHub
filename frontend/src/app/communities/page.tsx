@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { secondaryButtonClass, inputClass } from '@/components/ui/form';
 import { useDebouncedCallback } from '@/hooks/use-debounced-callback';
 import { api } from '@/lib/api';
@@ -27,10 +27,13 @@ function CommunitiesIndex() {
   // input state is local so typing is instant; the URL is the source of truth
   const [input, setInput] = useState(urlQuery);
 
-  // back/forward navigation must update the box too
-  useEffect(() => {
+  // back/forward navigation must update the box too — React's documented
+  // "adjust state when a prop changes" pattern (render-time, not an effect)
+  const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
+  if (prevUrlQuery !== urlQuery) {
+    setPrevUrlQuery(urlQuery);
     setInput(urlQuery);
-  }, [urlQuery]);
+  }
 
   const syncToUrl = useDebouncedCallback((value: string) => {
     const params = new URLSearchParams(searchParams.toString());

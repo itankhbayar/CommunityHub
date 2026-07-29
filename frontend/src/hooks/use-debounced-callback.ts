@@ -8,7 +8,11 @@ export function useDebouncedCallback<Args extends unknown[]>(
   delayMs: number,
 ): (...args: Args) => void {
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+  // updated post-render, not during — keeps the latest closure without
+  // retriggering the memo below
+  useEffect(() => {
+    callbackRef.current = callback;
+  });
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

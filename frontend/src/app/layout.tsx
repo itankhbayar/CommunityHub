@@ -35,8 +35,17 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
         <Providers>
+          {/* first tabbable element on every page */}
+          <a
+            href="#main-content"
+            className="sr-only rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
+          >
+            Skip to content
+          </a>
           <NavBar />
-          <main className="flex-1">{children}</main>
+          <main id="main-content" className="flex-1">
+            {children}
+          </main>
         </Providers>
       </body>
     </html>
