@@ -35,6 +35,9 @@ const SPEC_TABLE: Record<
   'post:delete:own': [true, true, true, true, false],
   // Delete any post — admin, owner, moderator
   'post:delete:any': [true, true, true, false, false],
+  // Like a post — NOT in the CLAUDE.md table; added by decision D1 for the
+  // optimistic like button. Members-only, mirroring the RSVP row.
+  'post:like': [true, true, true, true, false],
   // Create/edit/delete event — admin, owner, moderator
   'event:manage': [true, true, true, false, false],
   // RSVP to event — all members
@@ -67,6 +70,10 @@ describe('PERMISSION_MATRIX', () => {
     )('$role -> $expected', ({ role, expected }) => {
       expect(isAllowed(role, permission)).toBe(expected);
     });
+  });
+
+  it('matches the 13 spec rows plus the single documented extension (post:like)', () => {
+    expect(permissions).toHaveLength(14);
   });
 
   it('never grants NON_MEMBER anything beyond viewing', () => {

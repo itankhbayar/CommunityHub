@@ -32,6 +32,7 @@ export type PermissionKey =
   | 'post:edit:any'
   | 'post:delete:own'
   | 'post:delete:any'
+  | 'post:like'
   | 'event:manage'
   | 'event:rsvp'
   | 'member:invite'
@@ -69,6 +70,9 @@ export const PERMISSION_MATRIX: Record<PermissionKey, readonly ActorRole[]> = {
   'post:edit:any': MODERATORS_UP,
   'post:delete:own': MEMBERS_UP,
   'post:delete:any': MODERATORS_UP,
+  // not a row in the CLAUDE.md table — likes exist for the optimistic-UI
+  // requirement (decision D1). Members-only, same footing as RSVP.
+  'post:like': MEMBERS_UP,
   'event:manage': MODERATORS_UP,
   'event:rsvp': MEMBERS_UP,
   'member:invite': MODERATORS_UP,

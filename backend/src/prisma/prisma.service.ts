@@ -35,6 +35,9 @@ export class PrismaService
         connectionTimeoutMillis: 5_000,
         idleTimeoutMillis: 30_000,
       }),
+      // query events always on: emitting with no listeners is free, and the
+      // e2e suite subscribes to them to prove the feed does not N+1
+      log: [{ emit: 'event', level: 'query' }],
     });
   }
 

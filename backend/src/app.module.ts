@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { AuthzModule } from './authz/authz.module';
 import { CommunitiesModule } from './communities/communities.module';
 import { MembersModule } from './members/members.module';
+import { PostsModule } from './posts/posts.module';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -17,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthzModule,
     CommunitiesModule,
     MembersModule,
+    PostsModule,
   ],
   controllers: [HealthController],
   providers: [],
