@@ -1,0 +1,8 @@
+# Normalize to LF in the repo — the app runs in Linux containers, and CRLF
+# would break any shell script bind-mounted into them.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.svg text

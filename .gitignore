@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# secrets — only .env.example is tracked
+.env
+.env.*
+!.env.example
+
+# build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# test / tooling
+coverage/
+.eslintcache
+
+# logs
+*.log
+npm-debug.log*
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

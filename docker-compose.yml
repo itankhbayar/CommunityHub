@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-communityhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-communityhub}
+      POSTGRES_DB: ${POSTGRES_DB:-communityhub}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # api waits on this so the first migration never races an unready server
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-communityhub} -d ${POSTGRES_DB:-communityhub}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-communityhub}:${POSTGRES_PASSWORD:-communityhub}@db:5432/${POSTGRES_DB:-communityhub}?schema=public
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-3000}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    volumes:
+      - ./backend:/app
+      # anonymous volume: keeps the image's node_modules from being shadowed
+      # by the host bind mount above (host may have none, or wrong-platform binaries)
+      - /app/node_modules
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: development
+      # browser-side calls, so this is the host-visible API URL, not the compose hostname
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4000}
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  pgdata:
