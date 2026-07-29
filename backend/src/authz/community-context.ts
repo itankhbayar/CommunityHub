@@ -6,6 +6,7 @@ import { ActorRole } from './permissions';
 export interface CommunitySummary {
   id: string;
   slug: string;
+  name: string;
   visibility: Visibility;
 }
 

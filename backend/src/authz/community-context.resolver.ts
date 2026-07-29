@@ -10,7 +10,12 @@ export interface ResolvedTarget {
   resource?: ResolvedResource;
 }
 
-const COMMUNITY_SELECT = { id: true, slug: true, visibility: true } as const;
+const COMMUNITY_SELECT = {
+  id: true,
+  slug: true,
+  name: true,
+  visibility: true,
+} as const;
 
 /**
  * Maps whatever route params are present onto the community the request is

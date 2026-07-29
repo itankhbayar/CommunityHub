@@ -43,6 +43,8 @@ export interface EventView {
   myStatus: string | null;
   createdBy: { id: string; displayName: string };
   createdAt: Date;
+  /** lets the standalone event page link back and resolve role context */
+  community: { id: string; slug: string; name: string };
 }
 
 @Injectable()
@@ -70,7 +72,7 @@ export class EventsService {
       select: EVENT_SELECT,
     });
 
-    return toView(event, null);
+    return toView(event, null, summaryOf(ctx));
   }
 
   async list(
@@ -109,7 +111,7 @@ export class EventsService {
       : new Map<string, string>();
 
     return {
-      items: rows.map((row) => toView(row, myStatuses.get(row.id) ?? null)),
+      items: rows.map((row) => toView(row, myStatuses.get(row.id) ?? null, summaryOf(ctx))),
       meta: {
         page,
         limit,
@@ -138,7 +140,7 @@ export class EventsService {
         : Promise.resolve(null),
     ]);
 
-    return toView(event, mine?.status ?? null);
+    return toView(event, mine?.status ?? null, summaryOf(ctx));
   }
 
   async update(ctx: CommunityContext, dto: UpdateEventDto): Promise<EventView> {
@@ -177,7 +179,7 @@ export class EventsService {
       select: EVENT_SELECT,
     });
 
-    return toView(event, null);
+    return toView(event, null, summaryOf(ctx));
   }
 
   async delete(ctx: CommunityContext): Promise<void> {
@@ -291,7 +293,23 @@ export class EventsService {
   }
 }
 
-function toView(row: EventRow, myStatus: string | null): EventView {
+function summaryOf(ctx: CommunityContext): {
+  id: string;
+  slug: string;
+  name: string;
+} {
+  return {
+    id: ctx.community.id,
+    slug: ctx.community.slug,
+    name: ctx.community.name,
+  };
+}
+
+function toView(
+  row: EventRow,
+  myStatus: string | null,
+  community: { id: string; slug: string; name: string },
+): EventView {
   return {
     id: row.id,
     title: row.title,
@@ -304,6 +322,7 @@ function toView(row: EventRow, myStatus: string | null): EventView {
     myStatus,
     createdBy: row.createdBy,
     createdAt: row.createdAt,
+    community,
   };
 }
 

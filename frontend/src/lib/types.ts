@@ -74,6 +74,12 @@ export interface CommunityEvent {
   myStatus: RsvpStatus | null;
   createdBy: { id: string; displayName: string };
   createdAt: string;
+  community: { id: string; slug: string; name: string };
+}
+
+export interface RsvpResult {
+  status: RsvpStatus;
+  goingCount: number;
 }
 
 export interface Member {
