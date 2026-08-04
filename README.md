@@ -216,20 +216,56 @@ cause of the symptom above.
 
 Verify with `curl https://<api-host>/health` → `{"status":"ok",…}`.
 
-Two deployment-specific notes. Both cookies switch to `SameSite=None` via
-`COOKIE_SAMESITE=none`, which is mandatory across domains and which costs
-real CSRF protection — see [Token storage](#token-storage-httponly-cookies).
-And Render's free tier idles the API after inactivity, so the first request
-after a pause takes ~30s; the frontend shows loading states rather than
-blank screens, but the wait is real.
+One deployment-specific note beyond the steps: both cookies switch to
+`SameSite=None` via `COOKIE_SAMESITE=none`, which is mandatory across domains
+and which costs real CSRF protection — see
+[Token storage](#token-storage-httponly-cookies).
+
+### Cold starts on a free tier
+
+Render's free tier spins the API container down after ~15 minutes idle. The
+next request pays a full cold boot — image pull, Nest bootstrap, Prisma
+connecting to Supabase — of roughly 30–60s, and *every* request queues behind
+it. Warm, the same endpoints answer in ~250ms.
+
+Two mitigations, addressing different halves of the problem:
+
+**`.github/workflows/keep-api-warm.yml`** pings `/health` every 10 minutes to
+keep the instance from idling out. Set the repo variable `API_HEALTH_URL` to
+`https://<api-host>/health` or the job fails loudly. This shortens the
+problem rather than solving it: GitHub's scheduler is best-effort on free
+runners and skips ticks under load, and it disables scheduled workflows in
+repos with no commits for 60 days. A paid always-on instance is the actual
+fix.
+
+**The nav no longer waits on the network to decide it has nothing to wait
+for.** `SessionProvider` resolves the session with a client-side
+`GET /auth/me`, and the nav used to render a skeleton until it answered — so
+a signed-out visitor stared at a shimmering rectangle for the entire cold
+boot before being offered a Sign in button whose correctness never depended
+on the server.
+
+`lib/session-hint.ts` records the last known answer in `localStorage` and the
+nav consults it to choose *which* placeholder to show: skeleton only if this
+browser was signed in last time, otherwise the real Sign in / Join links,
+immediately and server-rendered. It holds no token, no identity and no roles,
+is forgeable by anyone who opens devtools, and buys a forger exactly one
+skeleton — every actual permission is still decided server-side per request.
+
+A cookie would have been the more conventional carrier, but cookies are
+scoped per registrable domain: one set by `onrender.com` is returned to the
+API and is invisible to `document.cookie` on `vercel.app`. `localStorage` is
+per-origin and written by the frontend, so it works in both the split-host
+and same-origin setups.
 
 ## Deliberately skipped and why
 
 - **Email delivery, OAuth, payments** — out of scope per spec. "Invite" is a
   direct add of an existing account by email.
 - **A managed deploy pipeline** — `render.yaml` provisions the API and its
-  database, but there is no CI, no staging environment, and no automated
-  migration gate; `docker compose up` remains the supported path.
+  database, but there is no test/build CI (the one workflow is a keep-alive
+  ping), no staging environment, and no automated migration gate;
+  `docker compose up` remains the supported path.
 - **Community settings/delete UI** — the API endpoints exist and are fully
   tested; the UI was cut to spend the time on the required interactive
   components. (Creating a community from the UI works — the "New community"
@@ -262,3 +298,10 @@ blank screens, but the wait is real.
   shadows the new packages.
 - Feed/like state is not synchronized across tabs or users in real time;
   it reconciles on refetch.
+- A stale session hint (signed in over 7 days ago, so the refresh token has
+  since expired) makes the nav show its skeleton for one load before settling
+  on Sign in / Join. It self-corrects on the 401.
+- Page *content* still waits out a cold start; only the nav shell was
+  decoupled. Every content surface has a loading state, so this reads as slow
+  rather than broken — but 30s is 30s. See
+  [Cold starts on a free tier](#cold-starts-on-a-free-tier).

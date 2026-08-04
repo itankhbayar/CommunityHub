@@ -1,0 +1,43 @@
+# Render's free tier spins the API container down after ~15 minutes idle, and
+# the next request pays a full cold boot (image pull, Nest bootstrap, Prisma
+# connect) before anything renders. This pings /health often enough that the
+# instance stays up during waking hours.
+#
+# Setup: Settings → Secrets and variables → Actions → Variables → New variable
+#   API_HEALTH_URL = https://<your-api-host>/health
+# Unset, the job fails loudly rather than pretending to keep anything warm.
+#
+# Two honest caveats. GitHub's scheduler is best-effort on free runners and
+# routinely runs several minutes late or skips a tick under load, so this
+# reduces cold starts rather than eliminating them. And GitHub disables
+# scheduled workflows in repositories with no commits for 60 days — the ping
+# stops silently. A paid instance is the real fix; this is the free one.
+name: Keep API warm
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# Nothing here touches the repository.
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        env:
+          HEALTH_URL: ${{ vars.API_HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "::error::Repository variable API_HEALTH_URL is not set."
+            exit 1
+          fi
+          # --max-time 90 because a genuinely cold boot can take ~60s, and that
+          # request is the point of the job — timing it out defeats it.
+          curl --fail --silent --show-error \
+               --max-time 90 --retry 2 --retry-all-errors \
+               --output /dev/null \
+               --write-out 'HTTP %{http_code} in %{time_total}s\n' \
+               "$HEALTH_URL"
