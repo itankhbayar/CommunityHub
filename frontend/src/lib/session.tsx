@@ -1,8 +1,9 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext, useEffect } from 'react';
 import { api, ApiError } from './api';
+import { setSessionHint } from './session-hint';
 import { SessionUser } from './types';
 
 interface SessionState {
@@ -41,6 +42,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     retry: (failureCount, error) =>
       !(error instanceof ApiError) && failureCount < 2,
   });
+
+  // Record the outcome so the next page load can pick the right placeholder
+  // before the network answers. Login and logout both land here via refresh().
+  // An errored query leaves `data` undefined and the previous hint standing —
+  // a failed round trip is not evidence either way.
+  useEffect(() => {
+    if (data !== undefined) setSessionHint(data !== null);
+  }, [data]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY });
