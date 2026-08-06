@@ -115,6 +115,13 @@ refresh token is an opaque random value — stored server-side as a sha256
 hash, rotated on every refresh, family-revoked on reuse or logout —
 `SameSite=Strict` and scoped to `/auth` so it accompanies nothing else.
 
+Changing a password (`POST /auth/password`) revokes **every** refresh token
+for that user, across all families and devices — whoever knew the old
+password must not keep a live session merely because they refreshed
+recently. The caller is handed a fresh cookie pair in the same response, so
+the effect is "signed out everywhere except here" rather than an immediate
+logout of the person doing the change.
+
 The CSRF tradeoff, honestly: cookies mean CSRF is a consideration.
 We rely on `SameSite=Lax` (browsers withhold the cookie from cross-site
 POST/PATCH/DELETE) plus a JSON-only API that rejects unknown fields — the
@@ -227,6 +234,15 @@ blank screens, but the wait is real.
 
 - **Email delivery, OAuth, payments** — out of scope per spec. "Invite" is a
   direct add of an existing account by email.
+- **Signed-out password reset** — deliberately absent rather than unfinished.
+  Without email there is nothing to prove a reset request comes from the
+  account's owner, and a form that takes an address and a new password is
+  account takeover with extra steps. `POST /auth/password` covers the case
+  that *can* be made safe: a signed-in user proving they know the current
+  password. The sign-in page says so plainly behind "Forgot password?"
+  instead of offering a button that cannot work. A locked-out account still
+  needs either email delivery or an admin-set-password endpoint; neither is
+  built.
 - **A managed deploy pipeline** — `render.yaml` provisions the API and its
   database, but there is no CI, no staging environment, and no automated
   migration gate; `docker compose up` remains the supported path.
