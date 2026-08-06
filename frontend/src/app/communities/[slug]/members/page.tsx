@@ -288,12 +288,15 @@ function InviteForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 sm:flex-row sm:items-end dark:border-zinc-800"
+      className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
     >
-      <div className="flex-1">
-        <label htmlFor="invite-email" className="mb-1.5 block text-sm font-medium">
-          Invite by email
-        </label>
+      <label htmlFor="invite-email" className="block text-sm font-medium">
+        Invite by email
+      </label>
+      {/* input and submit share one row at every width — the button is short
+          enough that it never needs to wrap, and `min-w-0` lets the input
+          shrink instead of squeezing it */}
+      <div className="mt-1.5 flex gap-2">
         <input
           id="invite-email"
           type="email"
@@ -301,19 +304,23 @@ function InviteForm({
           placeholder="their@email.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
+          aria-describedby="invite-email-hint"
+          className={`${inputClass} min-w-0 flex-1`}
         />
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          They need a CommunityHub account already; they join as a member right away.
-        </p>
+        <button
+          type="submit"
+          disabled={mutation.isPending || !email.trim()}
+          className={`${primaryButtonClass} shrink-0`}
+        >
+          {mutation.isPending ? 'Inviting…' : 'Invite'}
+        </button>
       </div>
-      <button
-        type="submit"
-        disabled={mutation.isPending || !email.trim()}
-        className={primaryButtonClass}
+      <p
+        id="invite-email-hint"
+        className="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
       >
-        {mutation.isPending ? 'Inviting…' : 'Invite'}
-      </button>
+        They need a CommunityHub account already; they join as a member right away.
+      </p>
     </form>
   );
 }
