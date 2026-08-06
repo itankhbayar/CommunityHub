@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -6,6 +7,7 @@ import {
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from './auth.types';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { IssuedRefreshToken, TokenService } from './token.service';
@@ -113,6 +115,53 @@ export class AuthService {
     if (rawToken) {
       await this.tokens.revokeFamilyByToken(rawToken);
     }
+  }
+
+  /**
+   * Changing a password requires proving you know the current one, which is
+   * what makes this safe without email: a stolen but unlocked session cannot
+   * be used to lock the real owner out.
+   *
+   * Every existing refresh token for the user is revoked — including the
+   * caller's own — and a fresh session is issued to whoever made this request.
+   * The practical effect is "signed out everywhere except here".
+   */
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<AuthSession> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      throw new UnauthorizedException('Your session is no longer valid.');
+    }
+
+    const valid = await argon2.verify(user.passwordHash, dto.currentPassword);
+    if (!valid) {
+      throw new UnauthorizedException('Your current password is incorrect.');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'Your new password must be different from the current one.',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await argon2.hash(dto.newPassword, ARGON2_OPTIONS),
+      },
+    });
+
+    await this.tokens.revokeAllForUser(userId);
+
+    return this.startSession({
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      globalRole: user.globalRole,
+    });
   }
 
   /** `/auth/me` — identity plus the memberships the UI needs to render roles. */

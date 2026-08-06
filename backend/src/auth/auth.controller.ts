@@ -22,6 +22,7 @@ import {
 } from './cookies';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { TokenService } from './token.service';
@@ -78,6 +79,24 @@ export class AuthController {
     // access token must still clear the session rather than 401.
     await this.auth.logout(this.readRefreshCookie(req));
     clearAuthCookies(res);
+  }
+
+  // Authenticated on purpose (no @Public): there is no email delivery in this
+  // build, so proving you know the current password is the only ownership
+  // check available. A signed-out "forgot password" flow cannot be made safe
+  // here and is therefore absent rather than fake.
+  @HttpCode(HttpStatus.OK)
+  @Post('password')
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // responds with a fresh cookie pair — the change revoked the old one
+    return this.respondWithSession(
+      await this.auth.changePassword(user.id, dto),
+      res,
+    );
   }
 
   @Get('me')
