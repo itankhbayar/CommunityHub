@@ -122,39 +122,129 @@ async function main(): Promise<void> {
     const authors = { maya, theo, suki };
 
     const trailPosts: [keyof typeof authors, string][] = [
-      ['maya', 'Welcome to Trail Blazers! Introduce yourself and tell us your favorite local trail.'],
-      ['theo', 'Reminder: always pack a headlamp, even for "short" afternoon hikes. Ask me how I know.'],
-      ['suki', 'First hike with this group yesterday — my legs hate me but my camera roll is thriving.'],
-      ['maya', 'Scouted the ridge line route this morning. Muddy but passable. Poles recommended.'],
-      ['theo', 'PSA: the north trailhead parking lot is closed for repaving until the 12th.'],
-      ['suki', 'Does anyone have a boot recommendation for wide feet? Budget around $150.'],
-      ['maya', 'Sunrise from Eagle Point at 5:48 this morning. Zero regrets, several yawns.'],
-      ['theo', 'Trail mix hot take: raisins are load-bearing. Fight me in the comments.'],
-      ['suki', 'Saw a family of deer on the creek loop today. They were unimpressed by us.'],
-      ['maya', 'Group pace check: should we split into a fast crew and a scenic crew for long hikes?'],
-      ['theo', 'Fixed the washed-out step on the switchback with some rocks. Temporary but solid.'],
-      ['suki', 'My first summit with you all! Thank you for waiting at every viewpoint.'],
-      ['maya', 'Weather looks rough this weekend — keep an eye on the events page for changes.'],
-      ['theo', 'Recommended read: the county just published new trail maps, link at the visitor center.'],
-      ['suki', 'Blister prevention thread. Drop your secrets. Mine is two pairs of socks.'],
-      ['maya', 'We crossed 3 communities on one ridge today. Geography is fun.'],
-      ['theo', 'Volunteer cleanup crew was unstoppable today. 14 bags of trash off the creek loop.'],
-      ['suki', 'Anyone else name the trail cats? Gravel and Boulder said hi again today.'],
-      ['maya', 'Monthly photo thread: post your best shot from a group hike this month.'],
-      ['theo', 'If you borrowed my green trekking poles at the cleanup, I would love them back.'],
+      [
+        'maya',
+        'Welcome to Trail Blazers! Introduce yourself and tell us your favorite local trail.',
+      ],
+      [
+        'theo',
+        'Reminder: always pack a headlamp, even for "short" afternoon hikes. Ask me how I know.',
+      ],
+      [
+        'suki',
+        'First hike with this group yesterday — my legs hate me but my camera roll is thriving.',
+      ],
+      [
+        'maya',
+        'Scouted the ridge line route this morning. Muddy but passable. Poles recommended.',
+      ],
+      [
+        'theo',
+        'PSA: the north trailhead parking lot is closed for repaving until the 12th.',
+      ],
+      [
+        'suki',
+        'Does anyone have a boot recommendation for wide feet? Budget around $150.',
+      ],
+      [
+        'maya',
+        'Sunrise from Eagle Point at 5:48 this morning. Zero regrets, several yawns.',
+      ],
+      [
+        'theo',
+        'Trail mix hot take: raisins are load-bearing. Fight me in the comments.',
+      ],
+      [
+        'suki',
+        'Saw a family of deer on the creek loop today. They were unimpressed by us.',
+      ],
+      [
+        'maya',
+        'Group pace check: should we split into a fast crew and a scenic crew for long hikes?',
+      ],
+      [
+        'theo',
+        'Fixed the washed-out step on the switchback with some rocks. Temporary but solid.',
+      ],
+      [
+        'suki',
+        'My first summit with you all! Thank you for waiting at every viewpoint.',
+      ],
+      [
+        'maya',
+        'Weather looks rough this weekend — keep an eye on the events page for changes.',
+      ],
+      [
+        'theo',
+        'Recommended read: the county just published new trail maps, link at the visitor center.',
+      ],
+      [
+        'suki',
+        'Blister prevention thread. Drop your secrets. Mine is two pairs of socks.',
+      ],
+      [
+        'maya',
+        'We crossed 3 communities on one ridge today. Geography is fun.',
+      ],
+      [
+        'theo',
+        'Volunteer cleanup crew was unstoppable today. 14 bags of trash off the creek loop.',
+      ],
+      [
+        'suki',
+        'Anyone else name the trail cats? Gravel and Boulder said hi again today.',
+      ],
+      [
+        'maya',
+        'Monthly photo thread: post your best shot from a group hike this month.',
+      ],
+      [
+        'theo',
+        'If you borrowed my green trekking poles at the cleanup, I would love them back.',
+      ],
     ];
 
     const nookPosts: [keyof typeof authors, string][] = [
-      ['theo', 'Welcome to the Nook. House rule: no spoilers without a warning, ever.'],
-      ['suki', 'Finished the August pick in two sittings. I have THOUGHTS. Saving them for the meetup.'],
-      ['maya', 'Confession: I am three books behind and reading the shortest one first.'],
-      ['theo', 'Poll soon for the September pick — nominations open in the comments.'],
-      ['suki', 'The twist in chapter 11. That is the post. That is all I can legally say.'],
-      ['maya', 'Reading on the porch while it rains is the whole personality now.'],
-      ['theo', 'Library sale on Saturday. Hardcovers a dollar. This is not a drill.'],
-      ['suki', 'Annotated my copy for the first time ever. I get it now. I am a margins person.'],
-      ['maya', 'Vote result: we ARE allowed to say "the ending felt rushed" before the meetup.'],
-      ['theo', 'Gentle reminder the meetup moved one week later — see the events tab.'],
+      [
+        'theo',
+        'Welcome to the Nook. House rule: no spoilers without a warning, ever.',
+      ],
+      [
+        'suki',
+        'Finished the August pick in two sittings. I have THOUGHTS. Saving them for the meetup.',
+      ],
+      [
+        'maya',
+        'Confession: I am three books behind and reading the shortest one first.',
+      ],
+      [
+        'theo',
+        'Poll soon for the September pick — nominations open in the comments.',
+      ],
+      [
+        'suki',
+        'The twist in chapter 11. That is the post. That is all I can legally say.',
+      ],
+      [
+        'maya',
+        'Reading on the porch while it rains is the whole personality now.',
+      ],
+      [
+        'theo',
+        'Library sale on Saturday. Hardcovers a dollar. This is not a drill.',
+      ],
+      [
+        'suki',
+        'Annotated my copy for the first time ever. I get it now. I am a margins person.',
+      ],
+      [
+        'maya',
+        'Vote result: we ARE allowed to say "the ending felt rushed" before the meetup.',
+      ],
+      [
+        'theo',
+        'Gentle reminder the meetup moved one week later — see the events tab.',
+      ],
     ];
 
     type SeedPost = {
@@ -170,13 +260,17 @@ async function main(): Promise<void> {
         authorId: authors[who].id,
         body,
         // newest entry ~2h ago, spaced ~16h apart across two weeks
-        createdAt: new Date(now - 2 * HOUR - (trailPosts.length - 1 - i) * 16 * HOUR),
+        createdAt: new Date(
+          now - 2 * HOUR - (trailPosts.length - 1 - i) * 16 * HOUR,
+        ),
       })),
       ...nookPosts.map(([who, body], i): SeedPost => ({
         communityId: nook.id,
         authorId: authors[who].id,
         body,
-        createdAt: new Date(now - 5 * HOUR - (nookPosts.length - 1 - i) * 26 * HOUR),
+        createdAt: new Date(
+          now - 5 * HOUR - (nookPosts.length - 1 - i) * 26 * HOUR,
+        ),
       })),
     ];
 
@@ -263,16 +357,28 @@ async function main(): Promise<void> {
 
     // ---- summary ----------------------------------------------------------
     console.log('Seed complete.');
-    console.log(`  users: 4 (1 platform admin), posts: ${createdPosts.length}, likes: ${likeTotal}, events: 3`);
+    console.log(
+      `  users: 4 (1 platform admin), posts: ${createdPosts.length}, likes: ${likeTotal}, events: 3`,
+    );
     console.log(`  communities: trail-blazers (public), book-nook (private)`);
     console.log('');
     console.log('Demo logins (password for all: password123!)');
-    console.log('  admin@communityhub.local  platform admin, member of nothing');
-    console.log('  maya@communityhub.local   OWNER of Trail Blazers, MEMBER of Book Nook');
-    console.log('  theo@communityhub.local   MODERATOR of Trail Blazers, OWNER of Book Nook');
-    console.log('  suki@communityhub.local   MEMBER of Trail Blazers, MODERATOR of Book Nook');
+    console.log(
+      '  admin@communityhub.local  platform admin, member of nothing',
+    );
+    console.log(
+      '  maya@communityhub.local   OWNER of Trail Blazers, MEMBER of Book Nook',
+    );
+    console.log(
+      '  theo@communityhub.local   MODERATOR of Trail Blazers, OWNER of Book Nook',
+    );
+    console.log(
+      '  suki@communityhub.local   MEMBER of Trail Blazers, MODERATOR of Book Nook',
+    );
     console.log('');
-    console.log('"Sunrise Summit Hike" is seeded full (2/2) to demo the 409 path.');
+    console.log(
+      '"Sunrise Summit Hike" is seeded full (2/2) to demo the 409 path.',
+    );
     void admin;
   } finally {
     await prisma.$disconnect();

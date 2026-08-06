@@ -111,7 +111,9 @@ export class EventsService {
       : new Map<string, string>();
 
     return {
-      items: rows.map((row) => toView(row, myStatuses.get(row.id) ?? null, summaryOf(ctx))),
+      items: rows.map((row) =>
+        toView(row, myStatuses.get(row.id) ?? null, summaryOf(ctx)),
+      ),
       meta: {
         page,
         limit,
