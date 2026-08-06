@@ -7,6 +7,7 @@ import { ReactNode, useState } from 'react';
 import { useToast } from '@/components/toast/ToastProvider';
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/form';
 import { api, ApiError } from '@/lib/api';
+import { canManageCommunity } from '@/lib/roles';
 import { useSession } from '@/lib/session';
 import { Community } from '@/lib/types';
 import { CommunityLoader, communityQueryKey } from './community-context';
@@ -19,7 +20,7 @@ export default function CommunityLayout({ children }: { children: ReactNode }) {
       {(community) => (
         <div className="mx-auto max-w-3xl px-4 py-8">
           <CommunityHeader community={community} />
-          <Tabs slug={community.slug} />
+          <Tabs community={community} />
           {children}
         </div>
       )}
@@ -154,14 +155,20 @@ function CommunityHeader({ community }: { community: Community }) {
   );
 }
 
-function Tabs({ slug }: { slug: string }) {
+function Tabs({ community }: { community: Community }) {
   const pathname = usePathname();
-  const base = `/communities/${slug}`;
+  const { user } = useSession();
+  const base = `/communities/${community.slug}`;
 
   const tabs = [
     { href: base, label: 'Feed' },
     { href: `${base}/events`, label: 'Events' },
     { href: `${base}/members`, label: 'Members' },
+    // hidden rather than disabled for everyone else — a tab that only ever
+    // says "you may not" is noise. The page and both endpoints re-check.
+    ...(canManageCommunity(user, community)
+      ? [{ href: `${base}/settings`, label: 'Settings' }]
+      : []),
   ];
 
   return (
