@@ -7,12 +7,14 @@ import { MembersModule } from './members/members.module';
 import { PostsModule } from './posts/posts.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
+import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    MailModule,
     // Order matters: AuthModule's JwtAuthGuard must register before
     // AuthzModule's PermissionGuard — identity first, then permissions.
     AuthModule,
