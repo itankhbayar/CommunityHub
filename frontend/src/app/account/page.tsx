@@ -171,14 +171,14 @@ function ChangePasswordForm() {
       </form>
 
       <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
-        Forgotten your password and locked out? See{' '}
+        Don&apos;t remember your current password?{' '}
         <Link
-          href="/login"
+          href="/forgot-password"
           className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
         >
-          the note on the sign-in page
-        </Link>
-        .
+          Reset it by email
+        </Link>{' '}
+        instead.
       </p>
     </section>
   );

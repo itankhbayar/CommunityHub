@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, Suspense, useState } from 'react';
 import { Field, FormError, primaryButtonClass } from '@/components/ui/form';
-import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/toast/ToastProvider';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -20,7 +19,6 @@ function LoginForm() {
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
-  const [showRecovery, setShowRecovery] = useState(false);
 
   // only ever redirect within this site — a full URL in ?next= is ignored
   const nextParam = searchParams.get('next');
@@ -79,57 +77,18 @@ function LoginForm() {
           error={fieldErrors.password}
         />
         <div className="-mt-1 text-right">
-          <button
-            type="button"
-            onClick={() => setShowRecovery(true)}
+          <Link
+            href="/forgot-password"
             className="rounded text-sm text-zinc-600 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-400"
           >
             Forgot password?
-          </button>
+          </Link>
         </div>
         <button type="submit" disabled={pending} className={primaryButtonClass}>
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
 
-      <Modal
-        open={showRecovery}
-        onClose={() => setShowRecovery(false)}
-        title="No password reset yet"
-      >
-        <div className="flex flex-col gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-          <p>
-            This build has no email delivery, so it cannot verify that a reset
-            request really comes from you. Rather than ship a form that would
-            let anyone take over an account by typing its address, there is no
-            self-service reset at all.
-          </p>
-          <p>
-            If you can still sign in, you can change your password from{' '}
-            <Link
-              href="/account"
-              className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-            >
-              your account page
-            </Link>
-            .
-          </p>
-          <p>
-            If you are locked out and running this locally, the README has a
-            recovery recipe that rewrites the stored hash directly. On a shared
-            deployment, ask whoever administers it.
-          </p>
-        </div>
-        <div className="mt-5 flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowRecovery(false)}
-            className={primaryButtonClass}
-          >
-            Got it
-          </button>
-        </div>
-      </Modal>
       <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
         New here?{' '}
         <Link
