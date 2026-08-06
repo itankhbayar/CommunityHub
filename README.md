@@ -230,10 +230,6 @@ blank screens, but the wait is real.
 - **A managed deploy pipeline** — `render.yaml` provisions the API and its
   database, but there is no CI, no staging environment, and no automated
   migration gate; `docker compose up` remains the supported path.
-- **Community settings/delete UI** — the API endpoints exist and are fully
-  tested; the UI was cut to spend the time on the required interactive
-  components. (Creating a community from the UI works — the "New community"
-  button on /communities.)
 - **Waitlist auto-promotion, rate limiting, realtime, audit log** (stretch
   goals) — none attempted; the core was prioritized. `WAITLIST` already
   exists in the RSVP enum so promotion needs no future migration.
@@ -253,9 +249,21 @@ blank screens, but the wait is real.
   API paginates; the UI doesn't expose it).
 - Windows/macOS docker dev: the api container needs `CHOKIDAR_USEPOLLING`
   (set in compose) because inotify doesn't cross bind mounts. Turbopack
-  does not honor the equivalent for the web container — brand-new route
-  directories need a `docker compose restart web`; edits to existing files
-  hot-reload fine.
+  does not honor the equivalent for the web container — edits to existing
+  files hot-reload fine, but a **brand-new route directory** is not picked
+  up, and `docker compose restart web` alone does not fix it: Turbopack's
+  cache in `.next` survives the restart and keeps serving 404 for the new
+  route. Clear it too:
+
+  ```bash
+  docker compose stop web && rm -rf frontend/.next && docker compose start web
+  ```
+- Do not run `npm run build` on the host while the web container is up.
+  `.next` is bind-mounted (the anonymous volume for it was dropped), so a
+  host production build lands in the directory the in-container dev server
+  uses, and Turbopack panics on every request — the browser then reloads
+  forever against a page that can never compile. Same fix as above: stop
+  web, delete `.next`, start web.
 - After changing `package.json` dependencies, rebuild with
   `docker compose up -d --build --renew-anon-volumes api` (or `web`) — the
   anonymous `node_modules` volume otherwise survives the rebuild and
