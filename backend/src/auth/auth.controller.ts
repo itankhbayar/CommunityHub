@@ -23,8 +23,10 @@ import {
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { TokenService } from './token.service';
 
 @Controller('auth')
@@ -97,6 +99,25 @@ export class AuthController {
       await this.auth.changePassword(user.id, dto),
       res,
     );
+  }
+
+  // 202 for every address, known or not. Anything that distinguishes them —
+  // a 404, a different message, even a materially faster reply — is an
+  // account-enumeration oracle. See AuthService.requestPasswordReset.
+  @Public()
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
+    await this.auth.requestPasswordReset(dto);
+  }
+
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    // deliberately issues no session: proving control of an inbox is not
+    // reason enough to sign this browser in, so the UI sends them to login
+    await this.auth.resetPassword(dto);
   }
 
   @Get('me')
