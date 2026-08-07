@@ -31,16 +31,22 @@ The "Sunrise Summit Hike" event is seeded already full (2/2) so the
 optimistic-RSVP rollback is demoable immediately: RSVP to it, watch the
 button flip, then snap back with "This event is full."
 
+**Email lands at http://localhost:8025.** Compose bundles
+[Mailpit](https://github.com/axllent/mailpit), an SMTP server that accepts
+everything and delivers nothing, so confirmation and password-reset links are
+readable in a web inbox without an account, an API key, or any risk of mailing
+a real stranger. `docker compose up` still needs zero credentials.
+
 > **Port conflicts:** if you already run Postgres on 5432, set
 > `POSTGRES_PORT` in `.env` to a free port. Containers are unaffected;
-> only the host-side mapping changes.
+> only the host-side mapping changes. Same for `MAILPIT_UI_PORT` on 8025.
 
 ### Tests
 
 ```bash
 cd backend
 npm ci
-npm test          # unit: the permission matrix, cell by cell
+npm test          # 85 unit: the permission matrix cell by cell, plus the rate limiter
 npm run test:e2e  # 128 tests against real Postgres (docker db must be up)
 ```
 
@@ -50,10 +56,12 @@ it never touches seeded demo data.
 ## Architecture overview
 
 The backend is a NestJS API in `/backend` with Prisma 7 over PostgreSQL.
-Eight models: the six domain entities (User, Community, Membership, Post,
-Event, EventRsvp) plus `PostLike` (the optimistic like button needs
-something to persist) and `RefreshToken` (logout must be able to revoke a
-session server-side, and only a stored token can be revoked). Everything
+Nine models: the six domain entities (User, Community, Membership, Post,
+Event, EventRsvp) plus three pieces of infrastructure — `PostLike` (the
+optimistic like button needs something to persist), `RefreshToken` (logout
+must be able to revoke a session server-side, and only a stored token can be
+revoked), and `VerificationToken` (single-use hashed links for password reset
+and email confirmation, deliberately shaped like `RefreshToken`). Everything
 below a community cascades on delete at the database level, and the
 constraints the spec names — one membership per (user, community), one RSVP
 per (event, user) — are UNIQUE indexes, not application checks. The feed is
@@ -86,7 +94,13 @@ mapping to the roles allowed. Controllers declare intent with
 `@RequirePermission({ any, own, ownerField })`. No role branch exists in any
 controller or service.
 
-`PermissionGuard` (global, after `JwtAuthGuard`) decides in a fixed order:
+Three global guards run in registration order: `ThrottleGuard` (cheapest, and
+it must not sit behind the work a flood is trying to provoke), then
+`JwtAuthGuard` (identity), then `PermissionGuard`. Authentication is opt-out
+via `@Public()` so a new controller is protected by default; rate limiting is
+opt-in via `@Throttle` so only endpoints that cost something declare a cap.
+
+`PermissionGuard` decides in a fixed order:
 
 1. Resolve the route's community from its params (`postId`/`eventId` imply
    the community; malformed UUIDs 404 like absent rows).
@@ -120,7 +134,9 @@ for that user, across all families and devices — whoever knew the old
 password must not keep a live session merely because they refreshed
 recently. The caller is handed a fresh cookie pair in the same response, so
 the effect is "signed out everywhere except here" rather than an immediate
-logout of the person doing the change.
+logout of the person doing the change. A reset via emailed link revokes the
+same set but issues nothing back — see
+[Account recovery](#account-recovery-emailed-tokens).
 
 The CSRF tradeoff, honestly: cookies mean CSRF is a consideration.
 We rely on `SameSite=Lax` (browsers withhold the cookie from cross-site
@@ -141,6 +157,139 @@ barrier. That barrier is real but thinner than it was. **A split-host
 production deployment should add a double-submit CSRF token**; this repo does
 not, and that is the honest gap. Same-origin deploys keep the stronger
 defaults untouched.
+
+## Account recovery: emailed tokens
+
+Password reset and email confirmation are the same primitive with different
+TTLs. A `VerificationToken` row holds a **sha256 hash** of 32 random bytes —
+never the token itself, so a database leak yields nothing usable — plus a
+purpose, an expiry, and a `consumedAt`. Reset links last 1 hour because they
+are a live credential for the account; confirmation links last 24 hours
+because confirming an address is not urgent and people read mail late.
+
+Single use is enforced in the write, not the read: `consume()` re-checks
+`consumedAt: null` inside the `UPDATE`'s WHERE clause within one transaction,
+so two simultaneous submissions of the same link cannot both win — the loser
+updates zero rows and is rejected. Issuing a new token consumes any
+outstanding one of the same purpose, so a widening set of valid links never
+accumulates in an inbox. Changing a password by any route consumes
+outstanding reset tokens too, since a link mailed beforehand could otherwise
+undo the change.
+
+Resetting a password revokes every refresh token for the user: the old
+credential is no longer trusted and a session minted under it must not
+outlive it. Unlike a signed-in password change, reset issues **no** session in
+exchange — proving control of an inbox is not reason enough to sign a browser
+in — so the UI lands on the login form.
+
+### Not leaking which addresses have accounts
+
+`POST /auth/forgot-password` answers `202` for every address. A `404` on
+unknown addresses would be an enumeration oracle, and so would a materially
+faster reply.
+
+**The obvious defense was not enough, and only measuring caught it.** The
+first implementation did a dummy argon2 hash on the miss path, mirroring what
+login does. Measured, the two paths were still trivially distinguishable:
+
+| | median | range |
+|---|---|---|
+| Known address | 55 ms | 53–62 ms |
+| Unknown address | 20 ms | 18–34 ms |
+
+Non-overlapping — a *single* request revealed whether an address was
+registered. The hash was never the dominant cost; writing two rows and
+awaiting an SMTP round-trip was. The fix moves the send off the awaited path
+and pads every response to a 250 ms floor, comfortably above the slowest real
+path. Re-measured across all three branches — real send, suppressed by
+cooldown, and unknown address — everything now lands at 253–265 ms with fully
+overlapping ranges.
+
+Registration is the deliberate exception: it must tell you an address is
+taken, because you need to know. Login stays vague to compensate.
+
+### Rate limiting
+
+`/auth/forgot-password` is public and mails an **attacker-chosen** address.
+Unthrottled it is an email-bombing service, so two independent limits apply,
+because either alone is insufficient:
+
+- **Per client IP** (`ThrottleGuard`, opt-in via `@Throttle`): a fixed window
+  in memory. Stops one sender; a botnet evades it.
+- **Per account** (`VerificationTokenService.issue`): no second mail for the
+  same person and purpose within 60 seconds. Keyed on the *recipient* rather
+  than the sender, so it holds no matter how many IPs are involved. The
+  response is 202 either way, and the previous link is still valid, so a real
+  user waiting out the cooldown loses nothing.
+
+The IP buckets are keyed on handler and client only — **never on the request
+body**. Folding the submitted email in would make the 429 depend on which
+address was asked about and hand back the enumeration oracle above. A unit
+test guards that specifically.
+
+Login and register are not throttled yet. That is brute-force protection
+rather than mail abuse, and the e2e suite authenticates often enough that it
+needs its own handling first; the mechanism is in place, only the decorator is
+missing.
+
+> **`TRUST_PROXY` matters more than it looks.** Express derives `req.ip` from
+> `X-Forwarded-For` only when `trust proxy` is set, and the limiter keys on
+> that value, so both mistakes are silent. Unset behind a proxy, every request
+> looks like it came from the proxy: one bucket shared by the internet, and
+> the limiter locks everyone out at once. Set without a proxy in front,
+> `X-Forwarded-For` is caller-controlled: a fresh header per request is a
+> fresh bucket per request, and the limiter does nothing. Default `0` is right
+> for compose; hosted deployments behind one TLS hop set `1`. The value is
+> logged at boot next to the CORS allowlist, because neither is visible from
+> outside.
+
+The store is per-process and in memory. Counts reset on restart and are not
+shared between instances, so N replicas allow N times the limit. That is a
+deliberate tradeoff against a Redis dependency for an API that runs as a
+single instance; a hard global cap needs a shared store.
+
+### Email verification is advisory
+
+An unconfirmed address gets a dismissible banner and a status badge on the
+account page, and nothing else. **No feature is gated on it.** Confirming an
+address buys exactly one thing — a working password reset — and locking
+someone out of the product to protect them from a future lockout is
+backwards. Resetting a password also marks the address confirmed, since
+clicking a link we mailed is precisely the proof verification asks for.
+
+`/auth/verify-email` is public: the link is clicked from a mail client, often
+on a device that was never signed in, so the token is the whole
+authorisation. That is proportionate given how little it grants.
+`/auth/verify-email/resend` takes no address and always mails the caller's
+own, which is what keeps it from being a second open relay.
+
+Seeded demo accounts are backfilled as verified — nobody can open mail at
+`@communityhub.local`, so they would otherwise carry a banner none of them
+could ever dismiss.
+
+### Running without SMTP
+
+Leaving `SMTP_HOST` blank **disables** email: `MailerService` writes each
+message to the API log, link included, and sends nothing. That is the mode the
+e2e suite and a host-side `npm run start:dev` want, because compose's
+`mailpit` hostname resolves only inside the compose network.
+
+There is no safe default here, and picking one caused a real bug. Defaulting
+the host to `mailpit` meant every send from outside compose was a multi-second
+DNS timeout ending in a logged failure. With the e2e suite registering five
+users per file, that was slow enough to starve the Postgres connection pool
+and fail tests in unrelated suites — the symptom was `Connection terminated
+unexpectedly` in the *events* and *members* specs, nowhere near the mail code.
+The suite now forces `SMTP_HOST=''` alongside the cookie flags it already
+pins, for the same reason: a real value in `.env` must not silently win and
+break the run.
+
+The same investigation turned up a second bug worth naming. Registration
+originally fired the whole verification routine — token write included — as a
+detached promise. Detaching a database write lets it outlive the request and,
+in tests, the application: the query then lands on a closed connection. Only
+the SMTP call is detached now, and it touches no database. If you add
+background work here, await everything that speaks to Postgres.
 
 ## RSVP capacity under concurrency
 
@@ -232,23 +381,24 @@ blank screens, but the wait is real.
 
 ## Deliberately skipped and why
 
-- **Email delivery, OAuth, payments** — out of scope per spec. "Invite" is a
-  direct add of an existing account by email.
-- **Signed-out password reset** — deliberately absent rather than unfinished.
-  Without email there is nothing to prove a reset request comes from the
-  account's owner, and a form that takes an address and a new password is
-  account takeover with extra steps. `POST /auth/password` covers the case
-  that *can* be made safe: a signed-in user proving they know the current
-  password. The sign-in page says so plainly behind "Forgot password?"
-  instead of offering a button that cannot work. A locked-out account still
-  needs either email delivery or an admin-set-password endpoint; neither is
-  built.
+- **OAuth, payments** — out of scope per spec. "Invite" is a direct add of an
+  existing account by email.
+- **A production mail provider** — email delivery *was* originally skipped,
+  and is now in scope: a locked-out account had no recovery path at all,
+  which was the wrong thing to leave broken. What is skipped is the hosted
+  side. `MailerService` is plain SMTP via nodemailer, pointed at Mailpit
+  locally; a real deployment sets `SMTP_*` at Resend, Postmark, or SES. No
+  bounce handling, no delivery tracking, no templating engine — the two
+  messages are hand-written text with a minimal HTML twin.
 - **A managed deploy pipeline** — `render.yaml` provisions the API and its
   database, but there is no CI, no staging environment, and no automated
   migration gate; `docker compose up` remains the supported path.
-- **Waitlist auto-promotion, rate limiting, realtime, audit log** (stretch
-  goals) — none attempted; the core was prioritized. `WAITLIST` already
-  exists in the RSVP enum so promotion needs no future migration.
+- **Waitlist auto-promotion, realtime, audit log** (stretch goals) — not
+  attempted; the core was prioritized. `WAITLIST` already exists in the RSVP
+  enum so promotion needs no future migration. Rate limiting was on this list
+  and came off it: once an endpoint mails an attacker-chosen address, a cap
+  stops being a nice-to-have. See
+  [Rate limiting](#rate-limiting) for what is and is not covered.
 - **Exhaustive test coverage** — tests concentrate where the spec says
   correctness matters most: the authorization matrix (every cell, twice) and
   RSVP concurrency. Frontend testing is manual.
@@ -264,16 +414,21 @@ blank screens, but the wait is real.
 - Member and attendee lists render the first 100/50 without pager UI (the
   API paginates; the UI doesn't expose it).
 - Windows/macOS docker dev: the api container needs `CHOKIDAR_USEPOLLING`
-  (set in compose) because inotify doesn't cross bind mounts. Turbopack
-  does not honor the equivalent for the web container — edits to existing
-  files hot-reload fine, but a **brand-new route directory** is not picked
-  up, and `docker compose restart web` alone does not fix it: Turbopack's
-  cache in `.next` survives the restart and keeps serving 404 for the new
-  route. Clear it too:
+  (set in compose) because inotify doesn't cross bind mounts. Turbopack does
+  not honor the equivalent for the web container, so **hot reload is not
+  reliable at all** — not just for new route directories. An edit to an
+  existing file can be visible inside the container (`docker compose exec web
+  cat …` shows it) while the browser keeps serving the previous build and the
+  web logs show no recompile. `docker compose restart web` alone does not fix
+  either case: Turbopack's cache in `.next` survives the restart. Clear it
+  too:
 
   ```bash
   docker compose stop web && rm -rf frontend/.next && docker compose start web
   ```
+
+  If a change you are sure you made is not showing up, this is why — check
+  the web logs for a recompile line before assuming the change is wrong.
 - Do not run `npm run build` on the host while the web container is up.
   `.next` is bind-mounted (the anonymous volume for it was dropped), so a
   host production build lands in the directory the in-container dev server
