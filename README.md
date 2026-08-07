@@ -333,6 +333,22 @@ sets `COOKIE_SECURE`/`COOKIE_SAMESITE`. Migrations apply automatically at
 boot via `docker-entrypoint.sh`. Nothing is Render-specific: Railway, Fly, or
 any Docker host works with the same variables.
 
+Four variables the blueprint declares but cannot fill in, all of which fail
+**silently** if skipped:
+
+| Variable | Skipped, you get |
+|---|---|
+| `TRUST_PROXY` | Blueprint sets `1`. If it ever reverts to unset, every request looks like it came from Render's proxy — one shared rate-limit bucket, so five forgot-password requests from any one visitor lock the endpoint for everybody. |
+| `APP_URL` | Defaults to `http://localhost:3000`, so every emailed reset and confirmation link points at the recipient's own machine. |
+| `SMTP_*` | Email disabled. Messages go to the service log rather than an inbox, and password reset is unusable. The boot log says so loudly. |
+| `MAIL_FROM` | Mail from an unverified sender domain is dropped or spam-filed regardless of correct SMTP settings. |
+
+> Render re-applies blueprint-declared variables on every sync and silently
+> overrides dashboard edits — `sync: false` is honoured on first creation but
+> not reliably when updating an existing blueprint. If a value you set in the
+> dashboard reverts, delete the variable and re-add it rather than editing it
+> in place.
+
 **1a. Provision Postgres separately** (Supabase here; Neon or Render's own
 work too) and set `DATABASE_URL` on the API service. Three requirements,
 each of which fails in its own confusing way:

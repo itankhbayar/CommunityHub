@@ -56,6 +56,39 @@ services:
       - key: COOKIE_SAMESITE
         value: none
 
+      # Render terminates TLS at one proxy hop, so without this Express reads
+      # every request as coming from that proxy. ThrottleGuard buckets on
+      # req.ip, so one shared bucket means five forgot-password requests from
+      # anyone lock the endpoint for everyone — a global outage triggered by a
+      # single user. Do not remove this to "simplify"; see trustProxyHops().
+      - key: TRUST_PROXY
+        value: '1'
+
+      # Where emailed reset and confirmation links point: the Vercel origin,
+      # scheme included, no trailing slash. Same value shape as CORS_ORIGIN and
+      # unsynced for the same reason. Left unset it defaults to
+      # http://localhost:3000, which mails every user a dead link.
+      - key: APP_URL
+        sync: false
+
+      # Email. Unset means DISABLED: messages are written to the service log
+      # instead of sent, which makes password reset unusable in production —
+      # the boot log says so loudly. Point these at a provider (Resend,
+      # Postmark, SES). Unsynced because SMTP_PASSWORD is a credential.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+      # Must be an address at a domain the provider has verified, or mail is
+      # silently dropped or spam-filed no matter what the SMTP settings say.
+      - key: MAIL_FROM
+        sync: false
+
 # No `databases:` block: Postgres is hosted on Supabase, supplied via
 # DATABASE_URL above. Render's free tier deletes a database after 30 days,
 # which is the wrong property for anything meant to stay reachable.
