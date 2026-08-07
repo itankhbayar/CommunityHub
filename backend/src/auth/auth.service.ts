@@ -16,7 +16,10 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { IssuedRefreshToken, TokenService } from './token.service';
-import { VerificationTokenService } from './verification-token.service';
+import {
+  RESEND_COOLDOWN_MS,
+  VerificationTokenService,
+} from './verification-token.service';
 
 /**
  * OWASP's argon2id baseline. Tuned down would be faster; these are the
@@ -204,9 +207,10 @@ export class AuthService {
    *
    * The controller returns 202 unconditionally. This is the counterpart to
    * login's deliberate vagueness: an endpoint that 404s on unknown addresses
-   * is an account-enumeration oracle, and one that only *delays* on known
-   * ones is a slower oracle. So the miss path does comparable work — a dummy
-   * argon2 hash, matching what login does — before returning.
+   * is an account-enumeration oracle, and one that only *delays* on known ones
+   * is a slower oracle. Every path therefore returns the same status after the
+   * same padded duration — including the cooldown path below, which is faster
+   * than a real send and would otherwise be the loudest signal of the three.
    */
   async requestPasswordReset(dto: ForgotPasswordDto): Promise<void> {
     const startedAt = Date.now();
@@ -222,7 +226,13 @@ export class AuthService {
       const token = await this.verificationTokens.issue(
         user.id,
         TokenPurpose.PASSWORD_RESET,
+        RESEND_COOLDOWN_MS.PASSWORD_RESET,
       );
+
+      // null means a link was mailed moments ago and is still live. Sending
+      // another would only help someone bombing this inbox; the response stays
+      // 202 either way, so a real user cannot tell and neither can an attacker.
+      if (!token) return;
 
       // not awaited: SMTP latency is attacker-visible and varies with the
       // provider, so it must not be inside the timed window. MailerService

@@ -13,6 +13,19 @@ export const TOKEN_TTL_MS: Record<TokenPurpose, number> = {
   EMAIL_VERIFICATION: 24 * 60 * 60 * 1000,
 };
 
+/**
+ * Minimum gap between two mails to the same person for the same purpose.
+ *
+ * A minute is the balance point. Long enough that flooding an inbox needs a
+ * fresh IP every 60s to gain one message, short enough that someone who really
+ * did lose the mail to a spam filter is not stuck waiting. Their previous link
+ * also still works throughout, so the wait costs them nothing but patience.
+ */
+export const RESEND_COOLDOWN_MS: Record<TokenPurpose, number> = {
+  PASSWORD_RESET: 60 * 1000,
+  EMAIL_VERIFICATION: 60 * 1000,
+};
+
 @Injectable()
 export class VerificationTokenService {
   constructor(private readonly prisma: PrismaService) {}
@@ -22,26 +35,54 @@ export class VerificationTokenService {
    * plaintext. Any outstanding token of the same purpose is consumed first, so
    * requesting a new link silently kills the old one rather than leaving a
    * widening set of valid credentials in someone's inbox.
+   *
+   * Returns null when an unspent token of this purpose was issued less than
+   * `minIntervalMs` ago, meaning the caller should not send anything. This is
+   * the half of rate limiting that actually protects the victim: ThrottleGuard
+   * caps one IP, but the address in the body is attacker-chosen, so without a
+   * per-account floor a botnet still fills a stranger's inbox. It keys on the
+   * recipient rather than the sender, which is the thing being harmed.
    */
-  async issue(userId: string, purpose: TokenPurpose): Promise<string> {
+  async issue(
+    userId: string,
+    purpose: TokenPurpose,
+    minIntervalMs = 0,
+  ): Promise<string | null> {
     const token = randomBytes(TOKEN_BYTES).toString('base64url');
 
-    await this.prisma.$transaction([
-      this.prisma.verificationToken.updateMany({
+    return this.prisma.$transaction(async (tx) => {
+      if (minIntervalMs > 0) {
+        const recent = await tx.verificationToken.findFirst({
+          where: {
+            userId,
+            purpose,
+            consumedAt: null,
+            createdAt: { gt: new Date(Date.now() - minIntervalMs) },
+          },
+          select: { id: true },
+        });
+
+        // the previous link is still unspent and still valid, so the user is
+        // not stranded by this — they have a working token already
+        if (recent) return null;
+      }
+
+      await tx.verificationToken.updateMany({
         where: { userId, purpose, consumedAt: null },
         data: { consumedAt: new Date() },
-      }),
-      this.prisma.verificationToken.create({
+      });
+
+      await tx.verificationToken.create({
         data: {
           userId,
           purpose,
           tokenHash: hash(token),
           expiresAt: new Date(Date.now() + TOKEN_TTL_MS[purpose]),
         },
-      }),
-    ]);
+      });
 
-    return token;
+      return token;
+    });
   }
 
   /**

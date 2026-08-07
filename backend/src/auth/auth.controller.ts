@@ -12,6 +12,7 @@ import {
 // `import type` is required for types used in decorated signatures while
 // isolatedModules + emitDecoratorMetadata are both on.
 import type { Request, Response } from 'express';
+import { Throttle } from '../common/throttle/throttle.decorator';
 import { AuthService, AuthSession } from './auth.service';
 import type { AuthenticatedUser } from './auth.types';
 import {
@@ -83,10 +84,14 @@ export class AuthController {
     clearAuthCookies(res);
   }
 
-  // Authenticated on purpose (no @Public): there is no email delivery in this
-  // build, so proving you know the current password is the only ownership
-  // check available. A signed-out "forgot password" flow cannot be made safe
-  // here and is therefore absent rather than fake.
+  // Authenticated on purpose (no @Public): knowing the current password is
+  // what makes this safe without a mailed link, so an unlocked but stolen
+  // session cannot lock the real owner out. The signed-out route is
+  // /auth/forgot-password below.
+  //
+  // Throttled because each attempt is a guess at the current password, and an
+  // unlimited guessing endpoint is a slow brute force.
+  @Throttle({ limit: 10, windowMs: 15 * 60 * 1000 })
   @HttpCode(HttpStatus.OK)
   @Post('password')
   async changePassword(
@@ -104,6 +109,12 @@ export class AuthController {
   // 202 for every address, known or not. Anything that distinguishes them —
   // a 404, a different message, even a materially faster reply — is an
   // account-enumeration oracle. See AuthService.requestPasswordReset.
+  //
+  // The only public endpoint that mails an attacker-chosen address, so it is
+  // the one that most needs a cap. This limits a single sender; the per-account
+  // cooldown in VerificationTokenService.issue limits what any number of
+  // senders can do to one inbox.
+  @Throttle({ limit: 5, windowMs: 15 * 60 * 1000 })
   @Public()
   @HttpCode(HttpStatus.ACCEPTED)
   @Post('forgot-password')
@@ -111,6 +122,10 @@ export class AuthController {
     await this.auth.requestPasswordReset(dto);
   }
 
+  // Guessing a 32-byte token is not a realistic attack, but the endpoint is
+  // public and writes to the database, so it gets a ceiling anyway. Set well
+  // above what a person fumbling a link could ever need.
+  @Throttle({ limit: 20, windowMs: 15 * 60 * 1000 })
   @Public()
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('reset-password')
