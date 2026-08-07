@@ -73,8 +73,15 @@ services:
 
       # Email. Unset means DISABLED: messages are written to the service log
       # instead of sent, which makes password reset unusable in production —
-      # the boot log says so loudly. Point these at a provider (Resend,
-      # Postmark, SES). Unsynced because SMTP_PASSWORD is a credential.
+      # the boot log says so loudly.
+      #
+      # Brevo: smtp-relay.brevo.com / 587, SMTP_USER is the account login email
+      # and SMTP_PASSWORD is an SMTP key from "SMTP & API" -> "SMTP" (not the
+      # v3 API key on the neighbouring tab). Chosen because it verifies a single
+      # sender address rather than requiring a domain of your own. Nothing here
+      # is Brevo-specific beyond the hostname; any SMTP provider works.
+      #
+      # Unsynced: SMTP_PASSWORD is a credential, and the rest travel with it.
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -84,8 +91,8 @@ services:
       - key: SMTP_PASSWORD
         sync: false
 
-      # Must be an address at a domain the provider has verified, or mail is
-      # silently dropped or spam-filed no matter what the SMTP settings say.
+      # Must be an address the provider has verified — under Senders, for Brevo
+      # — or mail is rejected no matter what the SMTP settings say.
       - key: MAIL_FROM
         sync: false
 

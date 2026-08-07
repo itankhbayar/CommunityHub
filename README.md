@@ -300,6 +300,41 @@ in tests, the application: the query then lands on a closed connection. Only
 the SMTP call is detached now, and it touches no database. If you add
 background work here, await everything that speaks to Postgres.
 
+### Sending for real
+
+Compose defaults `SMTP_HOST`/`SMTP_PORT` to Mailpit but reads both from `.env`,
+so pointing the local stack at a live provider is a `.env` edit and
+`docker compose restart api` — no compose file surgery. That is worth doing
+**before** deploying: SMTP credentials fail in ways that look identical to
+having none, and finding out in production means reading Render logs to
+discover nobody got their reset link.
+
+The reference configuration is [Brevo](https://www.brevo.com), picked for one
+reason: it verifies a **single sender address**, so no domain of your own is
+needed. 300 messages a day free, far past what a demo uses.
+
+```bash
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USER=you@example.com      # the account login email
+SMTP_PASSWORD=                 # "SMTP & API" -> "SMTP" -> generate a key
+MAIL_FROM=CommunityHub <you@example.com>
+```
+
+Two things that will waste an afternoon otherwise. `SMTP_PASSWORD` is an
+**SMTP key**, not the v3 API key on the tab beside it and not the account
+password — and `MAIL_FROM` must be an address verified under *Senders*, or
+mail is rejected however correct the SMTP settings are. The default
+`no-reply@communityhub.local` is a `.local` domain that resolves nowhere; it is
+fine for Mailpit and accepted by nobody else.
+
+Nothing above is Brevo-specific beyond the hostname — the mailer is plain
+nodemailer SMTP, so any provider works on the same four variables.
+
+> While these are set locally, **mail actually leaves your machine**. Mailpit
+> is bypassed, so registering `someone@gmail.com` as a test really does email
+> whoever owns it. Use an address you control.
+
 ## RSVP capacity under concurrency
 
 Counting GOING rows and then inserting cannot be fixed by locking the rows
@@ -447,7 +482,7 @@ and same-origin setups.
   and is now in scope: a locked-out account had no recovery path at all,
   which was the wrong thing to leave broken. What is skipped is the hosted
   side. `MailerService` is plain SMTP via nodemailer, pointed at Mailpit
-  locally; a real deployment sets `SMTP_*` at Resend, Postmark, or SES. No
+  locally; a real deployment points `SMTP_*` at Brevo or equivalent. No
   bounce handling, no delivery tracking, no templating engine — the two
   messages are hand-written text with a minimal HTML twin.
 - **A managed deploy pipeline** — `render.yaml` provisions the API and its

@@ -51,8 +51,19 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # compose is same-origin (both on localhost), so the strict defaults hold
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
-      SMTP_HOST: mailpit
-      SMTP_PORT: '1025'
+      # Defaults keep every message inside Mailpit. Overriding these in .env
+      # points the stack at a real provider, which is how you check credentials
+      # before trusting them in production — see .env.example.
+      #
+      # BEWARE: once overridden, mail actually leaves your machine. Registering
+      # a test account then mails whatever address you typed, to a stranger if
+      # it happens to exist.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: '${SMTP_PORT:-1025}'
+      # Mailpit accepts unauthenticated mail; empty means the mailer sends no
+      # credentials at all, which is what it wants.
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-CommunityHub <no-reply@communityhub.local>}
       # emailed links point at the web app, which is host-visible, not at the
       # compose-internal hostname
