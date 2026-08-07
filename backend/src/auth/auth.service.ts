@@ -97,17 +97,23 @@ export class AuthService {
       },
     });
 
-    // Not awaited, and failures are swallowed after logging: the account
-    // already exists, so turning an SMTP or database hiccup into a 500 would
-    // tell the user registration failed when it did not. They land unverified,
-    // see the banner, and can resend. MailerService already logs rather than
-    // throwing; the catch covers issuing the token.
-    void this.sendVerificationMail(user.id, user.email).catch((error) =>
+    // Awaited, but never allowed to fail the request: the account already
+    // exists, so turning a mail problem into a 500 would tell the user
+    // registration failed when it did not. They land unverified, see the
+    // banner, and can resend.
+    //
+    // Awaiting matters. sendVerificationMail writes a token row, and detaching
+    // that write lets it outlive the request — and, in the e2e suite, the
+    // application itself, which then loses the connection mid-query. Only the
+    // SMTP call inside is detached, and that one touches no database.
+    try {
+      await this.sendVerificationMail(user.id, user.email);
+    } catch (error) {
       this.logger.error(
         `Could not send the verification email for ${user.id}`,
         error instanceof Error ? error.stack : String(error),
-      ),
-    );
+      );
+    }
 
     return this.startSession(user);
   }
@@ -343,7 +349,13 @@ export class AuthService {
     await this.sendVerificationMail(user.id, user.email);
   }
 
-  /** Issues a confirmation token and mails it, unless one just went out. */
+  /**
+   * Issues a confirmation token and mails it, unless one just went out.
+   *
+   * The token write is awaited; the send is not. Callers therefore know the
+   * database work is finished when this resolves, which is what lets register
+   * fire this off without leaking a query past the end of the request.
+   */
   private async sendVerificationMail(
     userId: string,
     email: string,
@@ -354,7 +366,9 @@ export class AuthService {
       RESEND_COOLDOWN_MS.EMAIL_VERIFICATION,
     );
 
-    if (token) await this.mailer.send(verifyEmailMail(email, token));
+    // matches requestPasswordReset: SMTP latency stays off the request path,
+    // and MailerService never rejects, so this cannot orphan a rejection
+    if (token) void this.mailer.send(verifyEmailMail(email, token));
   }
 
   /** `/auth/me` — identity plus the memberships the UI needs to render roles. */

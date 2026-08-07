@@ -21,21 +21,39 @@ export interface OutgoingMail {
  * would reintroduce exactly the account enumeration that endpoint avoids.
  * The cost of that choice is that a misconfigured SMTP host is only visible in
  * the API logs, so the startup line below states where mail is going.
+ *
+ * With SMTP_HOST unset, mail is **disabled** rather than attempted: the body is
+ * written to the log and nothing is sent. There is no safe default host — the
+ * one compose uses, `mailpit`, resolves only inside the compose network, so
+ * defaulting to it makes every send from the host (a dev server, the e2e
+ * suite) a multi-second DNS timeout that ends in a logged failure. Disabled
+ * mode is honest about that and still lets you follow a link.
  */
 @Injectable()
 export class MailerService implements OnModuleDestroy {
   private readonly logger = new Logger(MailerService.name);
-  private readonly transporter: Transporter;
+  /** null when SMTP is unconfigured — see the class comment */
+  private readonly transporter: Transporter | null;
   private readonly from: string;
 
   constructor() {
-    const host = process.env.SMTP_HOST ?? 'mailpit';
-    const port = Number(process.env.SMTP_PORT ?? 1025);
+    const host = process.env.SMTP_HOST?.trim();
+    const port = Number(process.env.SMTP_PORT ?? 587);
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASSWORD;
 
     this.from =
       process.env.MAIL_FROM ?? 'CommunityHub <no-reply@communityhub.local>';
+
+    if (!host) {
+      this.transporter = null;
+      this.logger.warn(
+        'SMTP_HOST is not set — email is DISABLED. Messages will be written to ' +
+          'this log instead of delivered, links included. Never run a real ' +
+          'deployment this way.',
+      );
+      return;
+    }
 
     this.transporter = nodemailer.createTransport({
       host,
@@ -50,6 +68,14 @@ export class MailerService implements OnModuleDestroy {
   }
 
   async send(mail: OutgoingMail): Promise<void> {
+    if (!this.transporter) {
+      // the text body carries the link, which is the only part anyone needs
+      this.logger.log(
+        `[email disabled] would send "${mail.subject}" to ${mail.to}\n${mail.text}`,
+      );
+      return;
+    }
+
     try {
       await this.transporter.sendMail({ from: this.from, ...mail });
       this.logger.log(`sent "${mail.subject}" to ${mail.to}`);
@@ -63,6 +89,6 @@ export class MailerService implements OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
-    this.transporter.close();
+    this.transporter?.close();
   }
 }

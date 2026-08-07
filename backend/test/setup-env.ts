@@ -21,3 +21,10 @@ process.env.REFRESH_TOKEN_TTL_DAYS ??= '7';
 // implies Secure, so it has to be pinned here too.
 process.env.COOKIE_SECURE = 'false';
 process.env.COOKIE_SAMESITE = 'lax';
+
+// Forced off for the same reason. Registration mails a confirmation link, and
+// the suite registers five users per file — pointed at a host that does not
+// resolve from here (compose's `mailpit`), each one is a multi-second DNS
+// timeout, which is slow enough to starve the Postgres pool and fail unrelated
+// tests. Empty means MailerService logs instead of connecting.
+process.env.SMTP_HOST = '';
