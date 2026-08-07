@@ -5,10 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { useSessionHint } from '@/lib/session-hint';
 import { useToast } from '@/components/toast/ToastProvider';
 
 export function NavBar() {
   const { user, isLoading, refresh } = useSession();
+  // Only a browser that was signed in last time has anything to wait for.
+  const mayBeSignedIn = useSessionHint();
   const toast = useToast();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -48,8 +51,11 @@ export function NavBar() {
         </Link>
 
         <div className="ml-auto flex items-center gap-3">
-          {isLoading ? (
-            // skeleton, not a blank gap: the header never jumps
+          {isLoading && mayBeSignedIn ? (
+            // Skeleton, not a blank gap: the header never jumps. Shown only
+            // when we expect a name to land here — a signed-out visitor gets
+            // the real links immediately instead of waiting out /auth/me,
+            // which on a cold-started API is ~30s.
             <div
               aria-hidden="true"
               className="h-8 w-24 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800"
