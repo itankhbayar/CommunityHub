@@ -62,14 +62,19 @@ export function NavBar() {
             />
           ) : user ? (
             <>
-              <span className="hidden text-sm text-zinc-600 sm:inline dark:text-zinc-400">
+              {/* the name doubles as the way into account settings — a
+                  separate nav item for one page would crowd the bar */}
+              <Link
+                href="/account"
+                className="hidden rounded px-1 text-sm text-zinc-600 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 sm:inline dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
                 {user.displayName}
                 {user.globalRole === 'PLATFORM_ADMIN' && (
                   <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                     admin
                   </span>
                 )}
-              </span>
+              </Link>
               <button
                 type="button"
                 onClick={() => void signOut()}

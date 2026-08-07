@@ -21,3 +21,17 @@ process.env.REFRESH_TOKEN_TTL_DAYS ??= '7';
 // implies Secure, so it has to be pinned here too.
 process.env.COOKIE_SECURE = 'false';
 process.env.COOKIE_SAMESITE = 'lax';
+
+// Forced off for the same reason. Registration mails a confirmation link, and
+// the suite registers five users per file — pointed at a host that does not
+// resolve from here (compose's `mailpit`), each one is a multi-second DNS
+// timeout, which is slow enough to starve the Postgres pool and fail unrelated
+// tests. Empty means MailerService logs instead of connecting.
+process.env.SMTP_HOST = '';
+
+// Forced on so the suite can give each test its own client identity via
+// X-Forwarded-For. ThrottleGuard buckets on req.ip, and every supertest request
+// otherwise arrives from 127.0.0.1 — one shared bucket, so the first spec to
+// spend a limit would fail every later one. Production defaults this to 0; see
+// trustProxyHops() for why both settings are dangerous in opposite directions.
+process.env.TRUST_PROXY = '1';

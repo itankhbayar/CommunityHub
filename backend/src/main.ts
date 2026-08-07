@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { configureApp } from './app-setup';
+import { configureApp, trustProxyHops } from './app-setup';
 
 const DEFAULT_ORIGIN = 'http://localhost:3000';
 
@@ -51,8 +52,9 @@ function originMatcher(entry: string): (origin: string) => boolean {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // sets the ValidationPipe, cookie parsing, the error filter, and trust proxy
   configureApp(app);
 
   const matchers = corsOrigins().map(originMatcher);
@@ -82,6 +84,13 @@ async function bootstrap() {
   // response header — so state it at boot. Diagnosing a CORS failure against a
   // healthy-looking API is otherwise pure guesswork.
   console.log(`[cors] allowed origins: ${corsOrigins().join(', ')}`);
+  // equally invisible from outside, and equally miserable to debug wrong
+  const hops = trustProxyHops();
+  console.log(
+    hops > 0
+      ? `[proxy] trusting ${hops} proxy hop(s) for client IPs`
+      : '[proxy] not behind a proxy — client IPs read from the socket',
+  );
 }
 
 void bootstrap();

@@ -76,10 +76,19 @@ function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
           error={fieldErrors.password}
         />
+        <div className="-mt-1 text-right">
+          <Link
+            href="/forgot-password"
+            className="rounded text-sm text-zinc-600 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:text-zinc-400"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <button type="submit" disabled={pending} className={primaryButtonClass}>
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+
       <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
         New here?{' '}
         <Link

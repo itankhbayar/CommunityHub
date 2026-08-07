@@ -138,6 +138,18 @@ export class TokenService {
       data: { revokedAt: new Date() },
     });
   }
+
+  /**
+   * Every session for one user, across all families and devices. Used when the
+   * password changes: whoever knew the old one must not keep a live session
+   * just because they refreshed recently.
+   */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
 }
 
 function hash(token: string): string {

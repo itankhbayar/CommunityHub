@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { NavBar } from '@/components/nav/NavBar';
+import { VerifyEmailBanner } from '@/components/nav/VerifyEmailBanner';
 import { Providers } from './providers';
 
 const geistSans = Geist({
@@ -43,6 +44,8 @@ export default function RootLayout({
             Skip to content
           </a>
           <NavBar />
+          {/* renders nothing unless signed in with an unconfirmed address */}
+          <VerifyEmailBanner />
           <main id="main-content" className="flex-1">
             {children}
           </main>

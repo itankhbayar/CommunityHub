@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { TokenService } from './token.service';
+import { VerificationTokenService } from './verification-token.service';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { TokenService } from './token.service';
   providers: [
     AuthService,
     TokenService,
+    VerificationTokenService,
     // Authentication is global and opt-out (@Public), so a new controller is
     // protected by default instead of by remembering to add a guard.
     { provide: APP_GUARD, useClass: JwtAuthGuard },

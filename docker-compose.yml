@@ -17,12 +17,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Catches every outgoing email instead of delivering it, and shows them at
+  # http://localhost:8025. This is what keeps `docker compose up` credential-free
+  # on a clean machine — no provider account, no API key, works offline.
+  # Production points SMTP_HOST/PORT/USER/PASSWORD at a real provider instead.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    environment:
+      MP_MAX_MESSAGES: 500
+
   api:
     build: ./backend
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       NODE_ENV: development
       PORT: 4000
@@ -37,6 +51,12 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # compose is same-origin (both on localhost), so the strict defaults hold
       COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      SMTP_HOST: mailpit
+      SMTP_PORT: '1025'
+      MAIL_FROM: ${MAIL_FROM:-CommunityHub <no-reply@communityhub.local>}
+      # emailed links point at the web app, which is host-visible, not at the
+      # compose-internal hostname
+      APP_URL: http://localhost:${WEB_PORT:-3000}
     ports:
       - '${API_PORT:-4000}:4000'
     volumes:

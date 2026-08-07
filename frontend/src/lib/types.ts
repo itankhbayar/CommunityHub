@@ -11,6 +11,8 @@ export interface SessionUser {
   displayName: string;
   globalRole: GlobalRole;
   createdAt: string;
+  /** null until the address is confirmed — drives the advisory banner */
+  emailVerifiedAt: string | null;
   memberships: {
     role: CommunityRole;
     joinedAt: string;

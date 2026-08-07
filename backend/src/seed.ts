@@ -39,6 +39,11 @@ async function main(): Promise<void> {
     });
 
     // ---- users ------------------------------------------------------------
+    // Demo accounts start verified. Nobody can open mail at
+    // @communityhub.local, so leaving them unverified would put a banner none
+    // of them could ever dismiss on top of the app you are here to look at.
+    const emailVerifiedAt = new Date();
+
     const upsertUser = (
       email: string,
       displayName: string,
@@ -47,8 +52,14 @@ async function main(): Promise<void> {
       prisma.user.upsert({
         where: { email },
         // keep the demo password working even if it was changed
-        update: { displayName, globalRole, passwordHash },
-        create: { email, displayName, globalRole, passwordHash },
+        update: { displayName, globalRole, passwordHash, emailVerifiedAt },
+        create: {
+          email,
+          displayName,
+          globalRole,
+          passwordHash,
+          emailVerifiedAt,
+        },
       });
 
     const admin = await upsertUser(
