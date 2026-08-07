@@ -35,6 +35,8 @@ export class MailerService implements OnModuleDestroy {
   /** null when SMTP is unconfigured — see the class comment */
   private readonly transporter: Transporter | null;
   private readonly from: string;
+  /** kept for `status`; `host:port`, never the credentials */
+  private readonly host: string = '';
 
   constructor() {
     const host = process.env.SMTP_HOST?.trim();
@@ -55,6 +57,7 @@ export class MailerService implements OnModuleDestroy {
       return;
     }
 
+    this.host = `${host}:${port}`;
     this.transporter = nodemailer.createTransport({
       host,
       port,
@@ -65,6 +68,26 @@ export class MailerService implements OnModuleDestroy {
     });
 
     this.logger.log(`mail -> ${host}:${port} as "${this.from}"`);
+  }
+
+  /**
+   * Whether mail can actually be sent, for /health to report.
+   *
+   * This exists because the failure it describes is otherwise invisible from
+   * outside the process. /auth/forgot-password answers 202 whether or not
+   * anything was sent — deliberately, so it cannot be used to enumerate
+   * accounts — which means a deployment with no SMTP configured looks exactly
+   * like a healthy one until somebody notices they never got their link.
+   * Diagnosing that took three rounds of dashboard archaeology; a boolean on
+   * the health endpoint would have taken one request.
+   *
+   * A boolean and a host, never the credentials.
+   */
+  get status(): { configured: boolean; host: string | null } {
+    return {
+      configured: this.transporter !== null,
+      host: this.transporter === null ? null : this.host,
+    };
   }
 
   async send(mail: OutgoingMail): Promise<void> {
