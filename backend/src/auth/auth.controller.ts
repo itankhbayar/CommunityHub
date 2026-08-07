@@ -28,6 +28,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { TokenService } from './token.service';
 
 @Controller('auth')
@@ -133,6 +134,31 @@ export class AuthController {
     // deliberately issues no session: proving control of an inbox is not
     // reason enough to sign this browser in, so the UI sends them to login
     await this.auth.resetPassword(dto);
+  }
+
+  // Public because the link is clicked from a mail client, which is routinely
+  // a different device with no session. The token is the whole authorisation,
+  // and that is proportionate: confirming an address grants no ability beyond
+  // becoming eligible for password reset.
+  @Throttle({ limit: 20, windowMs: 15 * 60 * 1000 })
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('verify-email')
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
+    await this.auth.verifyEmail(dto);
+  }
+
+  // Authenticated and takes no address — it always mails the caller's own,
+  // which is what keeps this from being a second open relay alongside
+  // forgot-password. 202 whether or not anything was sent: the account may
+  // already be verified, or inside the per-account cooldown.
+  @Throttle({ limit: 5, windowMs: 15 * 60 * 1000 })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Post('verify-email/resend')
+  async resendVerification(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.auth.resendVerification(user.id);
   }
 
   @Get('me')

@@ -2,11 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { TokenPurpose } from '../generated/prisma/enums';
-import { passwordResetMail } from '../mail/mail.templates';
+import { passwordResetMail, verifyEmailMail } from '../mail/mail.templates';
 import { MailerService } from '../mail/mailer.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from './auth.types';
@@ -15,6 +16,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { IssuedRefreshToken, TokenService } from './token.service';
 import {
   RESEND_COOLDOWN_MS,
@@ -60,6 +62,8 @@ export interface AuthSession {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
@@ -92,6 +96,18 @@ export class AuthService {
         globalRole: true,
       },
     });
+
+    // Not awaited, and failures are swallowed after logging: the account
+    // already exists, so turning an SMTP or database hiccup into a 500 would
+    // tell the user registration failed when it did not. They land unverified,
+    // see the banner, and can resend. MailerService already logs rather than
+    // throwing; the catch covers issuing the token.
+    void this.sendVerificationMail(user.id, user.email).catch((error) =>
+      this.logger.error(
+        `Could not send the verification email for ${user.id}`,
+        error instanceof Error ? error.stack : String(error),
+      ),
+    );
 
     return this.startSession(user);
   }
@@ -277,6 +293,70 @@ export class AuthService {
     await this.tokens.revokeAllForUser(userId);
   }
 
+  /**
+   * Spends a verification token and marks the address confirmed.
+   *
+   * Public, because the whole point is that it works from a mail client on a
+   * device that was never signed in. The token is the entire authorisation —
+   * which is safe here because confirming an address grants nothing beyond
+   * eligibility for password reset.
+   *
+   * Deliberately idempotent-feeling but not idempotent: the token is single
+   * use, so a second click on the same link reports failure. The account stays
+   * verified, and the UI says so rather than implying something broke.
+   */
+  async verifyEmail(dto: VerifyEmailDto): Promise<void> {
+    const userId = await this.verificationTokens.consume(
+      dto.token,
+      TokenPurpose.EMAIL_VERIFICATION,
+    );
+
+    if (!userId) {
+      throw new BadRequestException(
+        'This confirmation link is invalid or has expired. Request a new one from your account page.',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerifiedAt: new Date() },
+    });
+  }
+
+  /**
+   * Re-sends the confirmation mail to the caller's own address.
+   *
+   * Authenticated, so unlike forgot-password there is nothing to leak — the
+   * caller already knows this account exists. It still goes through the same
+   * per-account cooldown, because the thing being rationed is messages landing
+   * in an inbox, and that is worth protecting from a stolen session too.
+   */
+  async resendVerification(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, emailVerifiedAt: true },
+    });
+
+    // already done — sending again would only be confusing
+    if (!user || user.emailVerifiedAt) return;
+
+    await this.sendVerificationMail(user.id, user.email);
+  }
+
+  /** Issues a confirmation token and mails it, unless one just went out. */
+  private async sendVerificationMail(
+    userId: string,
+    email: string,
+  ): Promise<void> {
+    const token = await this.verificationTokens.issue(
+      userId,
+      TokenPurpose.EMAIL_VERIFICATION,
+      RESEND_COOLDOWN_MS.EMAIL_VERIFICATION,
+    );
+
+    if (token) await this.mailer.send(verifyEmailMail(email, token));
+  }
+
   /** `/auth/me` — identity plus the memberships the UI needs to render roles. */
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -287,6 +367,8 @@ export class AuthService {
         displayName: true,
         globalRole: true,
         createdAt: true,
+        // drives the advisory banner; null means the address is unconfirmed
+        emailVerifiedAt: true,
         memberships: {
           select: {
             role: true,

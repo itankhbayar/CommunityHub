@@ -7,6 +7,7 @@ import { useToast } from '@/components/toast/ToastProvider';
 import { Field, FormError, primaryButtonClass } from '@/components/ui/form';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
+import { useResendVerification } from '@/lib/useResendVerification';
 
 export default function AccountPage() {
   const { user, isLoading } = useSession();
@@ -43,9 +44,12 @@ export default function AccountPage() {
     <div className="mx-auto w-full max-w-md px-4 py-16">
       <h1 className="text-2xl font-bold tracking-tight">Your account</h1>
       <dl className="mt-4 flex flex-col gap-1 text-sm">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <dt className="text-zinc-500 dark:text-zinc-400">Signed in as</dt>
           <dd className="font-medium">{user.email}</dd>
+          <dd>
+            <EmailStatusBadge verifiedAt={user.emailVerifiedAt} />
+          </dd>
         </div>
         <div className="flex gap-2">
           <dt className="text-zinc-500 dark:text-zinc-400">Display name</dt>
@@ -53,9 +57,54 @@ export default function AccountPage() {
         </div>
       </dl>
 
+      {!user.emailVerifiedAt && <ConfirmEmailPrompt />}
+
       <hr className="my-8 border-zinc-200 dark:border-zinc-800" />
 
       <ChangePasswordForm />
+    </div>
+  );
+}
+
+function EmailStatusBadge({ verifiedAt }: { verifiedAt: string | null }) {
+  if (verifiedAt) {
+    return (
+      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+        Confirmed
+      </span>
+    );
+  }
+
+  return (
+    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-500/15 dark:text-amber-300">
+      Not confirmed
+    </span>
+  );
+}
+
+/**
+ * The banner can be dismissed for the tab; this cannot. Someone who came here
+ * deliberately — often following the "request a new one" line on a failed
+ * confirmation link — needs the resend to be findable, not hidden behind a
+ * notice they already closed.
+ */
+function ConfirmEmailPrompt() {
+  const { resend, pending } = useResendVerification();
+
+  return (
+    <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+      <p className="text-sm text-amber-900 dark:text-amber-200">
+        Confirming your address is what makes &ldquo;reset by email&rdquo;
+        possible. Without it, a forgotten password cannot be recovered.
+      </p>
+      <button
+        type="button"
+        onClick={() => void resend()}
+        disabled={pending}
+        className="mt-3 rounded-md bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:opacity-60 dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100"
+      >
+        {pending ? 'Sending…' : 'Send confirmation email'}
+      </button>
     </div>
   );
 }
