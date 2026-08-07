@@ -47,8 +47,17 @@ a real stranger. `docker compose up` still needs zero credentials.
 cd backend
 npm ci
 npm test          # 85 unit: the permission matrix cell by cell, plus the rate limiter
-npm run test:e2e  # 128 tests against real Postgres (docker db must be up)
+npm run test:e2e  # 161 tests against real Postgres (docker db must be up)
 ```
+
+Two things about the account-recovery specs are worth knowing before you read
+them. `MailerService` is swapped for a recorder, and the tests pull tokens out
+of the **message body** rather than out of the service that minted them —
+only a hash is stored, so the plaintext exists nowhere else, and reading it
+back from the mail means a broken link format fails the test instead of
+passing it. And every request carries an `X-Forwarded-For`, giving each test
+its own client identity so one test spending a rate limit cannot fail the
+next; `setup-env.ts` sets `TRUST_PROXY=1` to make Express honour it.
 
 The e2e suite creates and migrates its own `communityhub_test` database, so
 it never touches seeded demo data.
@@ -400,8 +409,9 @@ blank screens, but the wait is real.
   stops being a nice-to-have. See
   [Rate limiting](#rate-limiting) for what is and is not covered.
 - **Exhaustive test coverage** — tests concentrate where the spec says
-  correctness matters most: the authorization matrix (every cell, twice) and
-  RSVP concurrency. Frontend testing is manual.
+  correctness matters most: the authorization matrix (every cell, twice), RSVP
+  concurrency, and account recovery (single-use tokens, purpose separation,
+  session revocation, both rate limits). Frontend testing is manual.
 
 ## Known rough edges
 

@@ -1,29 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { configureApp } from './app-setup';
+import { configureApp, trustProxyHops } from './app-setup';
 
 const DEFAULT_ORIGIN = 'http://localhost:3000';
-
-/**
- * How many reverse proxies sit in front of this process, which is how Express
- * decides what `req.ip` means. ThrottleGuard keys its buckets on that value, so
- * both mistakes are real and neither is visible at runtime:
- *
- * - Left at 0 behind a proxy, every request appears to come from the proxy.
- * All clients share one bucket and the limiter locks out the whole world at
- * once.
- * - Set above 0 with no proxy in front, X-Forwarded-For is attacker-controlled.
- * A fresh header per request means a fresh bucket per request, and the limiter
- * does nothing at all.
- *
- * Default 0 is correct for `docker compose up`, where the browser reaches the
- * API directly. Render terminates TLS at one proxy hop, so its env sets 1.
- */
-function trustProxyHops(): number {
-  const parsed = Number(process.env.TRUST_PROXY ?? '');
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
-}
 
 /**
  * Parses CORS_ORIGIN into an allowlist.
@@ -74,11 +54,7 @@ function originMatcher(entry: string): (origin: string) => boolean {
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  const hops = trustProxyHops();
-  // `false` rather than `0`: Express treats the number 0 as "trust nothing"
-  // too, but only the boolean turns the X-Forwarded-For machinery off outright.
-  app.set('trust proxy', hops > 0 ? hops : false);
-
+  // sets the ValidationPipe, cookie parsing, the error filter, and trust proxy
   configureApp(app);
 
   const matchers = corsOrigins().map(originMatcher);
@@ -109,6 +85,7 @@ async function bootstrap() {
   // healthy-looking API is otherwise pure guesswork.
   console.log(`[cors] allowed origins: ${corsOrigins().join(', ')}`);
   // equally invisible from outside, and equally miserable to debug wrong
+  const hops = trustProxyHops();
   console.log(
     hops > 0
       ? `[proxy] trusting ${hops} proxy hop(s) for client IPs`
