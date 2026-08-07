@@ -282,7 +282,11 @@ export class AuthService {
 
     if (!userId) {
       throw new BadRequestException(
-        'This reset link is invalid or has expired. Request a new one.',
+        // No "request a new one" here: the reset page renders that as an
+        // actual link right after this sentence, and the two together read as
+        // a stutter. The verification message below keeps its guidance because
+        // nothing in that UI offers the next step inline.
+        'This reset link is invalid or has expired.',
       );
     }
 

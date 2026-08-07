@@ -91,15 +91,25 @@ function ResetPasswordForm() {
         noValidate
         className="mt-6 flex flex-col gap-4"
       >
+        {/* One child, not two: passing the message and the conditional link as
+            siblings makes React hand FormError an array, which is truthy even
+            when both are empty — that rendered a blank red box above the form. */}
         <FormError>
-          {formError}
-          {formError?.includes('expired') && (
+          {formError && (
             <>
-              {' '}
-              <Link href="/forgot-password" className="font-medium underline">
-                Request a new link
-              </Link>
-              .
+              {formError}
+              {formError.includes('expired') && (
+                <>
+                  {' '}
+                  <Link
+                    href="/forgot-password"
+                    className="font-medium underline"
+                  >
+                    Request a new link
+                  </Link>
+                  .
+                </>
+              )}
             </>
           )}
         </FormError>

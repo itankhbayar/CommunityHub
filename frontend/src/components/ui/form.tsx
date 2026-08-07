@@ -1,6 +1,6 @@
 'use client';
 
-import { InputHTMLAttributes, ReactNode } from 'react';
+import { Children, InputHTMLAttributes, ReactNode } from 'react';
 
 /** Shared input styling so every form looks and focuses the same way. */
 export const inputClass =
@@ -51,7 +51,19 @@ export function Field({ label, error, hint, id, ...rest }: FieldProps) {
 }
 
 export function FormError({ children }: { children: ReactNode }) {
-  if (!children) return null;
+  // `if (!children)` was not enough. A caller passing two conditional children
+  // — a message plus a link shown only for certain messages — hands React an
+  // array, and `[null, false]` is truthy, so an empty red alert box rendered
+  // above the form with nothing in it. Children.toArray drops null, undefined
+  // and booleans; the string check covers a server sending `message: ""`.
+  // Worth doing here rather than only at the call site: an empty role="alert"
+  // is also announced to screen readers as an alert with no content.
+  const content = Children.toArray(children).filter(
+    (child) => typeof child !== 'string' || child.trim() !== '',
+  );
+
+  if (content.length === 0) return null;
+
   return (
     <div
       role="alert"
