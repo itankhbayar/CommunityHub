@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { HomeCta } from '@/components/home/HomeCta';
 
 export default function Home() {
   return (
@@ -15,20 +15,7 @@ export default function Home() {
         organize real-world meetups — hikes, book clubs, cleanups, and whatever
         yours does best.
       </p>
-      <div className="flex gap-3">
-        <Link
-          href="/communities"
-          className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
-        >
-          Browse communities
-        </Link>
-        <Link
-          href="/register"
-          className="rounded-md border border-zinc-300 px-5 py-2.5 text-sm font-medium hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          Create an account
-        </Link>
-      </div>
+      <HomeCta />
     </div>
   );
 }
