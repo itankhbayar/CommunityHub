@@ -75,11 +75,24 @@ services:
       # instead of sent, which makes password reset unusable in production —
       # the boot log says so loudly.
       #
-      # Brevo: smtp-relay.brevo.com / 587, SMTP_USER is the account login email
-      # and SMTP_PASSWORD is an SMTP key from "SMTP & API" -> "SMTP" (not the
-      # v3 API key on the neighbouring tab). Chosen because it verifies a single
-      # sender address rather than requiring a domain of your own. Nothing here
-      # is Brevo-specific beyond the hostname; any SMTP provider works.
+      # ON RENDER, USE THE API KEY AND NOT SMTP. Free instances block outbound
+      # traffic on ports 25, 465 and 587, so an SMTP transport here connects to
+      # nothing: /health reports mail configured, every request succeeds, the
+      # send times out inside MailerService's catch, and Brevo's own log stays
+      # empty because nothing ever arrives. Paid instances open 465 and 587
+      # (25 stays blocked everywhere on EC2), but the API needs no upgrade.
+      #
+      # BREVO_API_KEY is the v3 API key, from "SMTP & API" -> "API Keys" — the
+      # tab beside the SMTP one, and the opposite of what the SMTP_* block
+      # below wants. It takes precedence when both are set.
+      - key: BREVO_API_KEY
+        sync: false
+
+      # SMTP, kept for hosts that allow it. Brevo: smtp-relay.brevo.com / 587,
+      # SMTP_USER is the account login email and SMTP_PASSWORD is an SMTP key
+      # from "SMTP & API" -> "SMTP". Ignored while BREVO_API_KEY is set.
+      # Nothing here is Brevo-specific beyond the hostname; any SMTP provider
+      # works.
       #
       # Unsynced: SMTP_PASSWORD is a credential, and the rest travel with it.
       - key: SMTP_HOST

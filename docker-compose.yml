@@ -58,6 +58,9 @@ services:
       # BEWARE: once overridden, mail actually leaves your machine. Registering
       # a test account then mails whatever address you typed, to a stranger if
       # it happens to exist.
+      # Set only if you are testing the HTTPS transport before deploying; it
+      # takes precedence over everything below and bypasses Mailpit entirely.
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: '${SMTP_PORT:-1025}'
       # Mailpit accepts unauthenticated mail; empty means the mailer sends no

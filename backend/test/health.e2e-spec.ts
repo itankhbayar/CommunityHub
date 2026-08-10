@@ -30,15 +30,24 @@ describe('Health (e2e)', () => {
     const res = await request(app.getHttpServer()).get('/health').expect(200);
     const { config } = res.body as {
       config: {
-        mail: { configured: boolean; host: string | null };
+        mail: {
+          configured: boolean;
+          transport: string | null;
+          host: string | null;
+        };
         trustProxyHops: number;
         appUrl: string | null;
       };
     };
 
-    // setup-env.ts forces SMTP_HOST='' for the suite, so this is the disabled
-    // shape — which is exactly the one production must be able to reveal
-    expect(config.mail).toEqual({ configured: false, host: null });
+    // setup-env.ts forces both mail variables empty for the suite, so this is
+    // the disabled shape — which is exactly the one production must be able to
+    // reveal
+    expect(config.mail).toEqual({
+      configured: false,
+      transport: null,
+      host: null,
+    });
     expect(typeof config.trustProxyHops).toBe('number');
     expect(config).toHaveProperty('appUrl');
   });
@@ -46,6 +55,7 @@ describe('Health (e2e)', () => {
   it('never exposes credentials', async () => {
     process.env.SMTP_PASSWORD = 'super-secret-smtp-key';
     process.env.SMTP_USER = 'secret-login@smtp.example.com';
+    process.env.BREVO_API_KEY = 'xkeysib-super-secret-api-key';
 
     const res = await request(app.getHttpServer()).get('/health').expect(200);
     const serialized = JSON.stringify(res.body);
@@ -55,6 +65,7 @@ describe('Health (e2e)', () => {
     // silent misconfiguration this was added to diagnose.
     expect(serialized).not.toContain('super-secret-smtp-key');
     expect(serialized).not.toContain('secret-login@smtp.example.com');
+    expect(serialized).not.toContain('xkeysib-super-secret-api-key');
     expect(serialized).not.toMatch(/password/i);
   });
 });

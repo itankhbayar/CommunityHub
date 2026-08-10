@@ -27,7 +27,13 @@ process.env.COOKIE_SAMESITE = 'lax';
 // resolve from here (compose's `mailpit`), each one is a multi-second DNS
 // timeout, which is slow enough to starve the Postgres pool and fail unrelated
 // tests. Empty means MailerService logs instead of connecting.
+//
+// Both transports have to be silenced, not just SMTP: BREVO_API_KEY takes
+// precedence, and it reaches a host that resolves perfectly well. Leaving it
+// set would mail a live provider — from a suite that registers throwaway
+// addresses in a loop — and spend a daily quota on it.
 process.env.SMTP_HOST = '';
+process.env.BREVO_API_KEY = '';
 
 // Forced on so the suite can give each test its own client identity via
 // X-Forwarded-For. ThrottleGuard buckets on req.ip, and every supertest request

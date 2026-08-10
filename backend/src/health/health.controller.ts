@@ -21,6 +21,10 @@ export class HealthController {
       //   mail.configured false -> reset and confirmation links go to the log
       //     instead of an inbox. Invisible otherwise, because
       //     /auth/forgot-password answers 202 either way on purpose.
+      //   mail.transport 'smtp' on a host that blocks outbound 25/465/587
+      //     (Render's free tier, among others) -> configured, reachable, and
+      //     silently timing out on every send. Naming the transport is what
+      //     separates that from a credential problem without reading logs.
       //   trustProxyHops 0 behind a proxy -> every client shares one
       //     rate-limit bucket, so one visitor can lock the endpoint for all.
       //   appUrl on localhost -> emailed links point at the recipient's own

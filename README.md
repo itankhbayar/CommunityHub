@@ -276,12 +276,13 @@ Seeded demo accounts are backfilled as verified — nobody can open mail at
 `@communityhub.local`, so they would otherwise carry a banner none of them
 could ever dismiss.
 
-### Running without SMTP
+### Running without mail
 
-Leaving `SMTP_HOST` blank **disables** email: `MailerService` writes each
-message to the API log, link included, and sends nothing. That is the mode the
-e2e suite and a host-side `npm run start:dev` want, because compose's
-`mailpit` hostname resolves only inside the compose network.
+Leaving both `BREVO_API_KEY` and `SMTP_HOST` blank **disables** email:
+`MailerService` writes each message to the API log, link included, and sends
+nothing. That is the mode the e2e suite and a host-side `npm run start:dev`
+want, because compose's `mailpit` hostname resolves only inside the compose
+network.
 
 There is no safe default here, and picking one caused a real bug. Defaulting
 the host to `mailpit` meant every send from outside compose was a multi-second
@@ -289,9 +290,11 @@ DNS timeout ending in a logged failure. With the e2e suite registering five
 users per file, that was slow enough to starve the Postgres connection pool
 and fail tests in unrelated suites — the symptom was `Connection terminated
 unexpectedly` in the *events* and *members* specs, nowhere near the mail code.
-The suite now forces `SMTP_HOST=''` alongside the cookie flags it already
-pins, for the same reason: a real value in `.env` must not silently win and
-break the run.
+The suite now forces `SMTP_HOST=''` and `BREVO_API_KEY=''` alongside the cookie
+flags it already pins, for the same reason: a real value in `.env` must not
+silently win and break the run. The API key matters more than the host there —
+`api.brevo.com` resolves perfectly well, so leaving it set would spend a live
+quota mailing the throwaway addresses the suite registers in a loop.
 
 The same investigation turned up a second bug worth naming. Registration
 originally fired the whole verification routine — token write included — as a
@@ -313,27 +316,58 @@ The reference configuration is [Brevo](https://www.brevo.com), picked for one
 reason: it verifies a **single sender address**, so no domain of your own is
 needed. 300 messages a day free, far past what a demo uses.
 
+There are two ways out, and `MailerService` picks one at boot: the API if
+`BREVO_API_KEY` is set, SMTP if `SMTP_HOST` is, disabled if neither. `/health`
+reports which under `config.mail.transport`.
+
 ```bash
+# 1. HTTPS API — required on hosts that block outbound SMTP; see below
+BREVO_API_KEY=xkeysib-...      # "SMTP & API" -> "API Keys"
+
+# 2. SMTP — everywhere else
 SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
 SMTP_USER=you@example.com      # the account login email
 SMTP_PASSWORD=                 # "SMTP & API" -> "SMTP" -> generate a key
+
 MAIL_FROM=CommunityHub <you@example.com>
 ```
 
-Two things that will waste an afternoon otherwise. `SMTP_PASSWORD` is an
-**SMTP key**, not the v3 API key on the tab beside it and not the account
-password — and `MAIL_FROM` must be an address verified under *Senders*, or
-mail is rejected however correct the SMTP settings are. The default
-`no-reply@communityhub.local` is a `.local` domain that resolves nowhere; it is
-fine for Mailpit and accepted by nobody else.
+Three things that will waste an afternoon otherwise. The two credentials live
+on **neighbouring tabs of the same page and are not interchangeable** — an
+SMTP key is not a v3 API key, and neither is the account password. `MAIL_FROM`
+must be an address verified under *Senders*, or mail is rejected however
+correct the credentials are; the default `no-reply@communityhub.local` is a
+`.local` domain that resolves nowhere, fine for Mailpit and accepted by nobody
+else. And **many hosts block outbound SMTP entirely** — see below.
 
-Nothing above is Brevo-specific beyond the hostname — the mailer is plain
-nodemailer SMTP, so any provider works on the same four variables.
+Only the API path is Brevo-specific. The SMTP path is plain nodemailer, so any
+provider works on the same four variables.
 
 > While these are set locally, **mail actually leaves your machine**. Mailpit
 > is bypassed, so registering `someone@gmail.com` as a test really does email
 > whoever owns it. Use an address you control.
+
+### When the host blocks SMTP
+
+Render's free instances **block outbound traffic on ports 25, 465 and 587**, as
+do many PaaS free tiers. Nothing about the failure says so. The service is
+healthy, `/health` reports mail configured, `/auth/forgot-password` returns its
+usual 202, the connection times out inside the `catch` in `MailerService.send`,
+and the provider's own dashboard shows **no log at all** — because nothing ever
+reached it. Three sources of truth agreed the setup was fine while no mail was
+being sent.
+
+Port 443 is not blocked, which is why the Brevo API transport exists. Same
+account, same verified sender, same free quota; only the transport changes. A
+paid Render instance opens 465 and 587 (25 stays blocked on EC2 regardless), so
+upgrading is the alternative fix.
+
+Two things came out of that diagnosis and are worth keeping:
+`config.mail.transport` on `/health`, because `configured: true` was accurate
+and useless once the question became *which way* mail leaves; and the provider
+message id in the success log line, which is what makes an API log
+cross-referencable with the dashboard.
 
 ## RSVP capacity under concurrency
 
@@ -375,8 +409,8 @@ Four variables the blueprint declares but cannot fill in, all of which fail
 |---|---|
 | `TRUST_PROXY` | Blueprint sets `1`. If it ever reverts to unset, every request looks like it came from Render's proxy — one shared rate-limit bucket, so five forgot-password requests from any one visitor lock the endpoint for everybody. |
 | `APP_URL` | Defaults to `http://localhost:3000`, so every emailed reset and confirmation link points at the recipient's own machine. |
-| `SMTP_*` | Email disabled. Messages go to the service log rather than an inbox, and password reset is unusable. The boot log says so loudly. |
-| `MAIL_FROM` | Mail from an unverified sender domain is dropped or spam-filed regardless of correct SMTP settings. |
+| `BREVO_API_KEY` | Email disabled, unless `SMTP_*` is set instead — and on a free Render instance those ports are blocked, so mail then fails silently with every indicator still green. Use the API key here. See [When the host blocks SMTP](#when-the-host-blocks-smtp). |
+| `MAIL_FROM` | Mail from an unverified sender is dropped or spam-filed regardless of correct credentials. |
 
 > Render re-applies blueprint-declared variables on every sync and silently
 > overrides dashboard edits — `sync: false` is honoured on first creation but
@@ -481,10 +515,11 @@ and same-origin setups.
 - **A production mail provider** — email delivery *was* originally skipped,
   and is now in scope: a locked-out account had no recovery path at all,
   which was the wrong thing to leave broken. What is skipped is the hosted
-  side. `MailerService` is plain SMTP via nodemailer, pointed at Mailpit
-  locally; a real deployment points `SMTP_*` at Brevo or equivalent. No
-  bounce handling, no delivery tracking, no templating engine — the two
-  messages are hand-written text with a minimal HTML twin.
+  side. `MailerService` speaks nodemailer SMTP to Mailpit locally and Brevo's
+  HTTPS API in production, the latter only because the host blocks SMTP ports.
+  No bounce handling, no delivery tracking, no retry or outbox — a failed send
+  is logged and gone — and no templating engine; the two messages are
+  hand-written text with a minimal HTML twin.
 - **A managed deploy pipeline** — `render.yaml` provisions the API and its
   database, but there is no test/build CI (the one workflow is a keep-alive
   ping), no staging environment, and no automated migration gate;
