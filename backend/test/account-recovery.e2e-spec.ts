@@ -597,13 +597,83 @@ describe('Account recovery (e2e)', () => {
         .expect(429);
     });
 
-    it('leaves unthrottled routes alone', async () => {
-      const client = freshClient();
+    describe('login', () => {
+      const LOGIN_LIMIT = 10; // matches @Throttle on /auth/login
 
-      // login has no @Throttle; 10 attempts must not start failing
-      for (let i = 0; i < 10; i++) {
-        await login('nobody@example.com', 'wrong', client).expect(401);
-      }
+      it('cuts off password guessing', async () => {
+        const attacker = freshClient();
+
+        for (let i = 0; i < LOGIN_LIMIT; i++) {
+          await login('victim@example.com', `guess-${i}`, attacker).expect(401);
+        }
+
+        await login('victim@example.com', 'guess-again', attacker).expect(429);
+      });
+
+      // The reason login refunds on success. Without it, this test is the same
+      // as the one above and anyone with a few devices is a suspect.
+      it('never charges a successful sign-in', async () => {
+        const { email } = await registerUser('regular@example.com');
+        const client = freshClient();
+
+        // triple the limit, all correct
+        for (let i = 0; i < LOGIN_LIMIT * 3; i++) {
+          await login(email, PASSWORD, client).expect(200);
+        }
+      });
+
+      it('forgives the failures once you get it right', async () => {
+        const { email } = await registerUser('forgetful@example.com');
+        const client = freshClient();
+
+        // most of the budget spent on wrong guesses
+        for (let i = 0; i < LOGIN_LIMIT - 1; i++) {
+          await login(email, 'not-my-password', client).expect(401);
+        }
+
+        // remembering the password gives that attempt back...
+        await login(email, PASSWORD, client).expect(200);
+        // ...so there is room to fumble again rather than being locked out
+        await login(email, 'wrong-again', client).expect(401);
+      });
+
+      it('locks one client without touching another', async () => {
+        const noisy = freshClient();
+        for (let i = 0; i < LOGIN_LIMIT; i++) {
+          await login('a@example.com', 'wrong', noisy).expect(401);
+        }
+        await login('a@example.com', 'wrong', noisy).expect(429);
+
+        await login('a@example.com', 'wrong', freshClient()).expect(401);
+      });
+    });
+
+    describe('register', () => {
+      const REGISTER_LIMIT = 10; // matches @Throttle on /auth/register
+
+      it('caps account creation, counting the successes', async () => {
+        const client = freshClient();
+
+        for (let i = 0; i < REGISTER_LIMIT; i++) {
+          await post('/auth/register', client)
+            .send({
+              email: `bulk-${i}@example.com`,
+              password: PASSWORD,
+              displayName: `Bulk ${i}`,
+            })
+            .expect(201);
+        }
+
+        // unlike login, a success is exactly what is being rationed here —
+        // each one created an account and mailed an address
+        await post('/auth/register', client)
+          .send({
+            email: 'bulk-overflow@example.com',
+            password: PASSWORD,
+            displayName: 'Overflow',
+          })
+          .expect(429);
+      });
     });
   });
 });

@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { ExecutionContext, HttpException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Throttle } from './throttle.decorator';
-import { ThrottleGuard } from './throttle.guard';
+import { ThrottleGuard, throttleKey } from './throttle.guard';
 
 const WINDOW_MS = 15 * 60 * 1000;
 
@@ -12,6 +12,9 @@ class TestController {
 
   @Throttle({ limit: 3, windowMs: WINDOW_MS })
   alsoLimited() {}
+
+  @Throttle({ limit: 3, windowMs: WINDOW_MS, refundOnSuccess: true })
+  refunding() {}
 
   unlimited() {}
 }
@@ -128,5 +131,53 @@ describe('ThrottleGuard', () => {
 
     const other = call({ body: { email: 'unknown@example.com' } });
     expect(other.error).toBeDefined();
+  });
+
+  describe('refunds', () => {
+    /** The key the guard and the refund interceptor must both derive. */
+    const key = () => throttleKey(contextFor({ handler: 'refunding' }).context);
+
+    it('lets a refunded slot be spent again', () => {
+      // three attempts exhausts the limit...
+      for (let i = 0; i < 3; i++) {
+        expect(call({ handler: 'refunding' }).allowed).toBe(true);
+      }
+      expect(call({ handler: 'refunding' }).error).toBeDefined();
+
+      // ...but refunding two of them buys two more
+      guard.refund(key());
+      guard.refund(key());
+      expect(call({ handler: 'refunding' }).allowed).toBe(true);
+      expect(call({ handler: 'refunding' }).allowed).toBe(true);
+      expect(call({ handler: 'refunding' }).error).toBeDefined();
+    });
+
+    it('never lets refunds bank credit below zero', () => {
+      call({ handler: 'refunding' });
+      // far more refunds than requests — a bug here would let the next window
+      // start negative and allow more than the limit
+      for (let i = 0; i < 50; i++) guard.refund(key());
+
+      for (let i = 0; i < 3; i++) {
+        expect(call({ handler: 'refunding' }).allowed).toBe(true);
+      }
+      expect(call({ handler: 'refunding' }).error).toBeDefined();
+    });
+
+    it('does not resurrect a window that already expired', () => {
+      call({ handler: 'refunding' });
+      jest.advanceTimersByTime(WINDOW_MS + 1);
+      guard.refund(key());
+
+      // the window is gone; the next request must start a fresh full one
+      for (let i = 0; i < 3; i++) {
+        expect(call({ handler: 'refunding' }).allowed).toBe(true);
+      }
+      expect(call({ handler: 'refunding' }).error).toBeDefined();
+    });
+
+    it('shrugs at a key it has never seen', () => {
+      expect(() => guard.refund('nothing.here|203.0.113.1')).not.toThrow();
+    });
   });
 });

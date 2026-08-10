@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottleRefundInterceptor } from './throttle-refund.interceptor';
 import { ThrottleGuard } from './throttle.guard';
 
 /**
@@ -8,6 +9,14 @@ import { ThrottleGuard } from './throttle.guard';
  * behind a database read that a flood is trying to provoke in the first place.
  */
 @Module({
-  providers: [{ provide: APP_GUARD, useClass: ThrottleGuard }],
+  providers: [
+    // Registered under its own token as well as APP_GUARD, via useExisting so
+    // both resolve to one instance. Without this the counters the interceptor
+    // refunds against would belong to a second, unrelated guard — and the two
+    // would silently disagree about how many attempts a client had left.
+    ThrottleGuard,
+    { provide: APP_GUARD, useExisting: ThrottleGuard },
+    { provide: APP_INTERCEPTOR, useClass: ThrottleRefundInterceptor },
+  ],
 })
 export class ThrottleModule {}

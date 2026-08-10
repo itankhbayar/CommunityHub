@@ -63,13 +63,7 @@ export class ThrottleGuard implements CanActivate, OnModuleDestroy {
     if (!policy) return true;
 
     const http = context.switchToHttp();
-    const request = http.getRequest<Request>();
-
-    // Keyed by handler + client only — deliberately not by anything in the
-    // body. Folding the submitted email in would make the 429 depend on which
-    // address was asked for, handing back the enumeration oracle that
-    // AuthService.requestPasswordReset works to close.
-    const key = `${context.getClass().name}.${context.getHandler().name}|${clientOf(request)}`;
+    const key = throttleKey(context);
 
     const now = Date.now();
     const existing = this.windows.get(key);
@@ -80,8 +74,12 @@ export class ThrottleGuard implements CanActivate, OnModuleDestroy {
       return true;
     }
 
-    existing.count += 1;
-    if (existing.count > policy.limit) {
+    // A refused request is not charged. That keeps `count` meaning exactly
+    // "requests admitted this window", which is what makes refunds arithmetic
+    // rather than approximate — otherwise every 429 inflates the counter and a
+    // later refund gives back a slot that was never really spent. It also
+    // stops a client hammering a closed door from digging itself deeper.
+    if (existing.count >= policy.limit) {
       const retryAfter = Math.ceil((existing.expiresAt - now) / 1000);
       http.getResponse<Response>().setHeader('Retry-After', String(retryAfter));
 
@@ -95,7 +93,23 @@ export class ThrottleGuard implements CanActivate, OnModuleDestroy {
       );
     }
 
+    existing.count += 1;
     return true;
+  }
+
+  /**
+   * Hands back a slot spent by a request that turned out to be legitimate.
+   * Called by ThrottleRefundInterceptor for policies with refundOnSuccess.
+   *
+   * Deliberately never resurrects an expired window or drops below zero: a
+   * refund arriving after the window rolled over must not create a new one
+   * carrying a negative count that would then allow more than the limit.
+   */
+  refund(key: string): void {
+    const window = this.windows.get(key);
+    if (window && window.expiresAt > Date.now() && window.count > 0) {
+      window.count -= 1;
+    }
   }
 
   private sweep(): void {
@@ -104,6 +118,20 @@ export class ThrottleGuard implements CanActivate, OnModuleDestroy {
       if (window.expiresAt <= now) this.windows.delete(key);
     }
   }
+}
+
+/**
+ * The bucket a request falls into: handler plus client, and **nothing from the
+ * body**. Folding the submitted email in would make the 429 depend on which
+ * address was asked about, handing back the enumeration oracle that
+ * AuthService.requestPasswordReset works to close.
+ *
+ * Exported because the refund interceptor has to derive the identical key for
+ * the same request — computing it twice in two places is how they drift.
+ */
+export function throttleKey(context: ExecutionContext): string {
+  const request = context.switchToHttp().getRequest<Request>();
+  return `${context.getClass().name}.${context.getHandler().name}|${clientOf(request)}`;
 }
 
 /**

@@ -2,7 +2,13 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { createTestApp, resetDatabase, TestApp } from './utils/app';
+import {
+  createTestApp,
+  freshTestClient,
+  resetDatabase,
+  setTestClient,
+  TestApp,
+} from './utils/app';
 
 const REGISTRATION = {
   email: 'ada@example.com',
@@ -44,6 +50,11 @@ describe('Auth (e2e)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // This file registers a dozen accounts and fails login on purpose several
+    // times, which is more than the rate limits allow from one client. A fresh
+    // identity per test keeps each one measuring what it means to measure
+    // rather than the leftovers of the test before it.
+    setTestClient(freshTestClient());
   });
 
   describe('registration and validation', () => {

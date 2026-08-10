@@ -16,6 +16,29 @@ export interface TestApp {
   close: () => Promise<void>;
 }
 
+/**
+ * The client identity requests are attributed to, for rate limiting.
+ *
+ * Every supertest request otherwise arrives from 127.0.0.1, so all of a spec
+ * file's tests share one bucket and the first to spend a limit fails every
+ * test after it. Specs call setTestClient() in beforeEach to get isolation
+ * without having to decorate each individual request.
+ */
+let testClientIp: string | null = null;
+
+let clientCounter = 0;
+
+/** A client address nothing else in the run will use. */
+export function freshTestClient(): string {
+  clientCounter += 1;
+  const n = clientCounter;
+  return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
+}
+
+export function setTestClient(ip: string | null): void {
+  testClientIp = ip;
+}
+
 export async function createTestApp(): Promise<TestApp> {
   const mail = new RecordingMailer();
 
@@ -30,6 +53,24 @@ export async function createTestApp(): Promise<TestApp> {
 
   const app = moduleRef.createNestApplication<INestApplication<App>>();
   configureApp(app);
+
+  // Registered after configureApp so it runs before any guard. Only fills the
+  // header in when a request did not set one itself, so a spec that needs
+  // several requests to share a client — the rate-limit tests — still can.
+  // setup-env.ts sets TRUST_PROXY=1 for Express to honour it.
+  app.use(
+    (
+      req: { headers: Record<string, unknown> },
+      _res: unknown,
+      next: () => void,
+    ) => {
+      if (testClientIp && !req.headers['x-forwarded-for']) {
+        req.headers['x-forwarded-for'] = testClientIp;
+      }
+      next();
+    },
+  );
+
   await app.init();
 
   return {

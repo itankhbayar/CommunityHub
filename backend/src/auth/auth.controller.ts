@@ -38,6 +38,11 @@ export class AuthController {
     private readonly tokens: TokenService,
   ) {}
 
+  // Counts everything, unlike login below: here the *successful* call is the
+  // costly one — it creates an account and mails a stranger's address. An hour
+  // window rather than fifteen minutes because signing up is a once-ever act,
+  // so a low ceiling over a long period costs a real person nothing.
+  @Throttle({ limit: 10, windowMs: 60 * 60 * 1000 })
   @Public()
   @Post('register')
   async register(
@@ -47,6 +52,16 @@ export class AuthController {
     return this.respondWithSession(await this.auth.register(dto), res);
   }
 
+  // Only wrong passwords accumulate — a successful sign-in refunds its slot.
+  // Counting every attempt would charge a person with three devices the same
+  // as someone running a dictionary, and the whole point is to separate those.
+  //
+  // Ten failures per quarter hour is far below what credential stuffing needs
+  // and far above what forgetting your own password looks like. It is per IP,
+  // so a shared office address is the case that suffers; that is the accepted
+  // cost of not having a per-account lockout, which would let anyone freeze a
+  // victim's account by failing logins on purpose.
+  @Throttle({ limit: 10, windowMs: 15 * 60 * 1000, refundOnSuccess: true })
   @Public()
   @HttpCode(HttpStatus.OK)
   @Post('login')
