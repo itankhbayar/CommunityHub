@@ -1,0 +1,121 @@
+# Runs the checks that were previously only run when somebody remembered to.
+#
+# This exists because of a specific incident rather than a policy: a change that
+# detached a database write from its request passed every manual check, and only
+# the e2e suite caught it — in specs nowhere near the code that broke. Nothing
+# forced that suite to run. Now something does.
+#
+# The e2e job needs a real Postgres, which is the point: the RSVP capacity test
+# proves a race is impossible using SELECT ... FOR UPDATE, and against a mock it
+# would prove nothing at all.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only. Nothing here writes to the repository or deploys.
+permissions:
+  contents: read
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — lint, types, unit, e2e
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Matches docker-compose, so a failure here means a real failure rather
+        # than a version difference between CI and the machine it was written on.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: communityhub
+          POSTGRES_PASSWORD: communityhub
+          POSTGRES_DB: communityhub
+        ports:
+          - 5432:5432
+        # Without the healthcheck the job races the database and fails on a
+        # cold start rather than on anything to do with the code.
+        options: >-
+          --health-cmd "pg_isready -U communityhub -d communityhub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The e2e suite derives communityhub_test from this and refuses to run
+      # against a non-local host, so this can only ever aim at the service above.
+      DATABASE_URL: postgresql://communityhub:communityhub@localhost:5432/communityhub?schema=public
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches backend/Dockerfile; Prisma 7 loads its query compiler as
+          # WASM through dynamic import, which is version-sensitive.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      # No postinstall hook generates this, and everything below imports from
+      # src/generated/prisma — so without this step the typecheck fails on a
+      # missing module rather than on anything real.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # Creates and migrates its own database in globalSetup.
+      - name: E2E tests
+        run: npm run test:e2e
+
+  frontend:
+    name: Frontend — lint, types, build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # `next build` typechecks too, but running tsc first means a type error
+      # is reported as a type error rather than buried in build output.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
