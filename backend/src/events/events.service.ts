@@ -252,8 +252,23 @@ export class EventsService {
 
         return { status: dto.status, goingCount };
       },
-      // generous ceiling: under contention, writers queue on the row lock
-      { timeout: 15_000 },
+      // Under contention every writer for this event queues on the row lock,
+      // so a transaction's lifetime is its own work plus everything ahead of
+      // it. That makes the ceiling a function of the slowest machine rather
+      // than of this code: 15s was ample here and not ample on a shared CI
+      // runner, where 50 queued RSVPs took ~16s to drain and the tail died
+      // with P2028 mid-transaction — a 500 for a request that was behaving
+      // correctly and merely waiting its turn.
+      //
+      // maxWait is separate and was previously left at Prisma's 2s default: it
+      // covers acquiring a pooled connection *before* BEGIN, which is the other
+      // thing a stampede exhausts. Both are ceilings, not targets; nothing
+      // waits this long unless it genuinely has a queue in front of it.
+      //
+      // The durable fix is holding the lock for less time — five round trips
+      // happen inside it — but that is a change to the most correctness-
+      // critical path here and wants its own careful pass.
+      { timeout: 60_000, maxWait: 15_000 },
     );
   }
 
