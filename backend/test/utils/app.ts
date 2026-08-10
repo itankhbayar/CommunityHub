@@ -73,6 +73,20 @@ export async function createTestApp(): Promise<TestApp> {
 
   await app.init();
 
+  // Bind a real port before any test runs.
+  //
+  // Without this, supertest lazily calls listen(0) on the first
+  // request(app.getHttpServer()) — and closes that server again as soon as
+  // *its own* response completes. Sequential tests never notice. A burst does:
+  // the RSVP race test fires fifty requests at once, the first to finish shuts
+  // the server, and whatever had not yet connected dies with ECONNRESET or
+  // ECONNREFUSED. It looked like a database problem — the errors that followed
+  // were Prisma transactions being torn down mid-flight — and it is not one.
+  //
+  // Passing here was luck rather than correctness: at 300 concurrent requests
+  // this machine reproduces it too. CI simply reaches the cliff at fifty.
+  await app.listen(0);
+
   return {
     app,
     prisma: app.get(PrismaService),
