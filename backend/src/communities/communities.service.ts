@@ -6,8 +6,14 @@ import { Prisma } from '../generated/prisma/client.js';
 import { CommunityRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommunityDto } from './dto/create-community.dto';
-import { ListCommunitiesQuery } from './dto/list-communities.query';
+import {
+  CommunitySort,
+  ListCommunitiesQuery,
+} from './dto/list-communities.query';
 import { UpdateCommunityDto } from './dto/update-community.dto';
+
+/** How far back the "active" sort looks for posts and events. */
+const ACTIVITY_WINDOW_DAYS = 30;
 
 const SUMMARY_SELECT = {
   id: true,
@@ -106,13 +112,7 @@ export class CommunitiesService {
 
     const [total, rows, memberships] = await Promise.all([
       this.prisma.community.count({ where }),
-      this.prisma.community.findMany({
-        where,
-        select: SUMMARY_SELECT,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
+      this.findPage(where, query.sort ?? 'new', (page - 1) * limit, limit),
       user
         ? this.prisma.membership.findMany({
             where: { userId: user.id },
@@ -136,6 +136,133 @@ export class CommunitiesService {
         totalPages: Math.max(1, Math.ceil(total / limit)),
       },
     };
+  }
+
+  /**
+   * One page of communities in the requested order.
+   *
+   * `new` and `popular` are plain index scans. `active` cannot be: Prisma can
+   * order by an unfiltered relation count, but "posts in the last 30 days" is
+   * a *filtered* count, and there is no orderBy for that. See rankByActivity.
+   */
+  private findPage(
+    where: Prisma.CommunityWhereInput,
+    sort: CommunitySort,
+    skip: number,
+    take: number,
+  ): Promise<CommunityRow[]> {
+    if (sort === 'active') return this.findActivePage(where, skip, take);
+
+    return this.prisma.community.findMany({
+      where,
+      select: SUMMARY_SELECT,
+      // id breaks ties so paging can never repeat or skip a row
+      orderBy:
+        sort === 'popular'
+          ? [
+              { memberships: { _count: 'desc' } },
+              { createdAt: 'desc' },
+              { id: 'desc' },
+            ]
+          : [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip,
+      take,
+    });
+  }
+
+  /**
+   * Communities that have seen the most posts and events lately, then everyone
+   * else by recency. Quiet communities are ranked last rather than filtered
+   * out, so this stays a sort: a brand new instance where nothing has happened
+   * yet still answers with its communities instead of an empty tab.
+   */
+  private async findActivePage(
+    where: Prisma.CommunityWhereInput,
+    skip: number,
+    take: number,
+  ): Promise<CommunityRow[]> {
+    const rankedIds = await this.rankByActivity(where);
+
+    const rankedPage = rankedIds.slice(skip, skip + take);
+    // once the ranked communities run out, the page is filled from the quiet
+    // ones — offset by however far past the ranked list this page starts
+    const quietTake = take - rankedPage.length;
+    const quietSkip = Math.max(0, skip - rankedIds.length);
+
+    const [rankedRows, quietRows] = await Promise.all([
+      rankedPage.length > 0
+        ? this.prisma.community.findMany({
+            where: { AND: [where, { id: { in: rankedPage } }] },
+            select: SUMMARY_SELECT,
+          })
+        : Promise.resolve([]),
+      quietTake > 0
+        ? this.prisma.community.findMany({
+            where: { AND: [where, { id: { notIn: rankedIds } }] },
+            select: SUMMARY_SELECT,
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            skip: quietSkip,
+            take: quietTake,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // `in` does not preserve order, so reimpose the ranking here
+    const byId = new Map(rankedRows.map((row) => [row.id, row]));
+    const ranked = rankedPage
+      .map((id) => byId.get(id))
+      .filter((row): row is CommunityRow => row !== undefined);
+
+    return [...ranked, ...quietRows];
+  }
+
+  /**
+   * Community ids by recent activity, busiest first.
+   *
+   * Both groupBys filter through `community: where` — the *same* object the
+   * listing itself is scoped by — so visibility is decided in exactly one
+   * place. Ranking a community the caller cannot see would leak its existence
+   * through the ordering even though the row itself is never returned.
+   */
+  private async rankByActivity(
+    where: Prisma.CommunityWhereInput,
+  ): Promise<string[]> {
+    const since = new Date(
+      Date.now() - ACTIVITY_WINDOW_DAYS * 24 * 3600 * 1000,
+    );
+    const recent = { createdAt: { gte: since }, community: where };
+
+    const [posts, events] = await Promise.all([
+      this.prisma.post.groupBy({
+        by: ['communityId'],
+        where: recent,
+        _count: { _all: true },
+      }),
+      this.prisma.event.groupBy({
+        by: ['communityId'],
+        where: recent,
+        _count: { _all: true },
+      }),
+    ]);
+
+    // a post and an event both count as one thing happening
+    const score = new Map<string, number>();
+    for (const row of [...posts, ...events]) {
+      score.set(
+        row.communityId,
+        (score.get(row.communityId) ?? 0) + row._count._all,
+      );
+    }
+
+    return (
+      [...score.entries()]
+        // uuid7 ids sort by creation time, so the tiebreak is "newer first" and,
+        // more importantly, is stable across pages
+        .sort(([aId, aScore], [bId, bScore]) =>
+          bScore !== aScore ? bScore - aScore : bId.localeCompare(aId),
+        )
+        .map(([id]) => id)
+    );
   }
 
   /** Detail: the guard already resolved + authorized; just hydrate the view. */

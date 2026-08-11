@@ -4,6 +4,8 @@ export type GlobalRole = 'USER' | 'PLATFORM_ADMIN';
 export type CommunityRole = 'OWNER' | 'MODERATOR' | 'MEMBER';
 export type Visibility = 'PUBLIC' | 'PRIVATE';
 export type RsvpStatus = 'GOING' | 'NOT_GOING';
+/** Ordering for GET /communities — reorders the list, never filters it. */
+export type CommunitySort = 'new' | 'popular' | 'active';
 
 export interface SessionUser {
   id: string;

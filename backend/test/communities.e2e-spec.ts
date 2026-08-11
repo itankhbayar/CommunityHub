@@ -345,6 +345,179 @@ describe('Communities (e2e)', () => {
     });
   });
 
+  // The three sorts behind the home page's filter. Fixtures share a name
+  // prefix so every assertion can scope itself with ?search= and stay immune
+  // to the communities other describes leave behind in the shared database.
+  describe('list sorting', () => {
+    const ids = new Map<string, string>();
+
+    async function makeCommunity(name: string, visibility = 'PUBLIC') {
+      const res = await agents
+        .get('owner')!
+        .post('/communities')
+        .send({ name, visibility })
+        .expect(201);
+      const body = res.body as CommunityBody;
+      ids.set(name, body.id);
+      return body.id;
+    }
+
+    async function addMembers(communityId: string, names: string[]) {
+      for (const name of names) {
+        await prisma.membership.create({
+          data: { userId: userIds.get(name)!, communityId, role: 'MEMBER' },
+        });
+      }
+    }
+
+    async function addPosts(communityId: string, count: number) {
+      for (let i = 0; i < count; i += 1) {
+        await prisma.post.create({
+          data: {
+            communityId,
+            authorId: userIds.get('owner')!,
+            body: `activity ${i}`,
+          },
+        });
+      }
+    }
+
+    async function slugsFor(sort: string, agent?: string) {
+      const req = agent
+        ? agents.get(agent)!.get('/communities')
+        : request(app.getHttpServer()).get('/communities');
+      const res = await req.query({ search: 'sortfix', sort }).expect(200);
+      return (res.body as ListBody).items.map((i) => i.name);
+    }
+
+    beforeAll(async () => {
+      // created oldest -> newest, which is the reverse of the `new` ordering
+      const quiet = await makeCommunity('Sortfix Quiet');
+      const busy = await makeCommunity('Sortfix Busy');
+      const middling = await makeCommunity('Sortfix Middling');
+
+      // popular: Quiet(3) > Middling(2) > Busy(1)
+      await addMembers(quiet, ['member', 'moderator']);
+      await addMembers(middling, ['member']);
+
+      // active: Busy(3) > Middling(2) > Quiet(0)
+      await addPosts(busy, 3);
+      await addPosts(middling, 1);
+      await prisma.event.create({
+        data: {
+          communityId: middling,
+          createdById: userIds.get('owner')!,
+          title: 'Sortfix meetup',
+          startsAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+    });
+
+    it('defaults to newest first when no sort is given', async () => {
+      expect(await slugsFor('new')).toEqual([
+        'Sortfix Middling',
+        'Sortfix Busy',
+        'Sortfix Quiet',
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/communities')
+        .query({ search: 'sortfix' })
+        .expect(200);
+      expect((res.body as ListBody).items.map((i) => i.name)).toEqual([
+        'Sortfix Middling',
+        'Sortfix Busy',
+        'Sortfix Quiet',
+      ]);
+    });
+
+    it('popular orders by member count, most members first', async () => {
+      expect(await slugsFor('popular')).toEqual([
+        'Sortfix Quiet',
+        'Sortfix Middling',
+        'Sortfix Busy',
+      ]);
+    });
+
+    it('active counts recent posts and events, busiest first', async () => {
+      expect(await slugsFor('active')).toEqual([
+        'Sortfix Busy',
+        'Sortfix Middling',
+        'Sortfix Quiet',
+      ]);
+    });
+
+    it('active ranks silent communities last rather than dropping them', async () => {
+      // Quiet has no posts and no events at all, and must still be returned —
+      // the sort reorders the set, it never filters it
+      const names = await slugsFor('active');
+      expect(names).toContain('Sortfix Quiet');
+      expect(names).toHaveLength(3);
+    });
+
+    it('activity older than the window does not count', async () => {
+      const stale = await makeCommunity('Sortfix Stale');
+      await prisma.post.create({
+        data: {
+          communityId: stale,
+          authorId: userIds.get('owner')!,
+          body: 'ancient history',
+          // 60 days old, well outside the 30-day window
+          createdAt: new Date(Date.now() - 60 * 86_400_000),
+        },
+      });
+
+      const names = await slugsFor('active');
+      // ranked below every community with recent activity, despite having a post
+      expect(names.indexOf('Sortfix Stale')).toBeGreaterThan(
+        names.indexOf('Sortfix Middling'),
+      );
+
+      await prisma.community.delete({ where: { id: stale } });
+    });
+
+    it('a private community never enters the ranking for an outsider', async () => {
+      const secret = await makeCommunity('Sortfix Hidden', 'PRIVATE');
+      // busier than anything public, so a leak would put it first
+      await addPosts(secret, 10);
+
+      expect(await slugsFor('active')).not.toContain('Sortfix Hidden');
+      expect(await slugsFor('active', 'outsider')).not.toContain(
+        'Sortfix Hidden',
+      );
+      expect(await slugsFor('popular', 'outsider')).not.toContain(
+        'Sortfix Hidden',
+      );
+
+      // ...but its own owner still sees it ranked first
+      expect((await slugsFor('active', 'owner'))[0]).toBe('Sortfix Hidden');
+
+      await prisma.community.delete({ where: { id: secret } });
+    });
+
+    it('paginates a sorted list without repeating or skipping rows', async () => {
+      const all = await slugsFor('active');
+
+      const pages: string[] = [];
+      for (const page of [1, 2, 3]) {
+        const res = await request(app.getHttpServer())
+          .get('/communities')
+          .query({ search: 'sortfix', sort: 'active', page, limit: 1 })
+          .expect(200);
+        pages.push(...(res.body as ListBody).items.map((i) => i.name));
+      }
+
+      expect(pages).toEqual(all);
+    });
+
+    it('rejects an unknown sort', async () => {
+      await request(app.getHttpServer())
+        .get('/communities')
+        .query({ sort: 'trending' })
+        .expect(400);
+    });
+  });
+
   describe('join and leave', () => {
     let communityId: string;
 
